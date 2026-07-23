@@ -113,7 +113,7 @@ Ensure the output is raw JSON, strictly matching this schema.
 async function callAI(prompt: string, modelChoice: string = 'nvidia'): Promise<string> {
   if (modelChoice === 'gemini') {
     const model = geminiClient.getGenerativeModel({ 
-      model: 'gemini-1.5-flash',
+      model: 'gemini-flash-lite-latest',
       generationConfig: { temperature: 0.7 } 
     });
     const result = await model.generateContent(prompt);
