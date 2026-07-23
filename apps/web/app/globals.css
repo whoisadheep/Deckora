@@ -1,50 +1,16 @@
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@import "tailwindcss";
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
-html,
-body {
-  max-width: 100vw;
-  overflow-x: hidden;
+@theme {
+  --color-brand-dark: #3D322A;
+  --color-brand-warm: #5C4A3A;
+  --color-brand-orange: #C05A35;
+  --color-brand-light: #D4784B;
+  --color-brand-cream: #F5F0EB;
+  --color-brand-card: #EDE5DC;
+  --color-brand-border: #D8CFC5;
 }
 
 body {
-  color: var(--foreground);
-  background: var(--background);
-}
-
-* {
-  box-sizing: border-box;
-  padding: 0;
-  margin: 0;
-}
-
-a {
-  color: inherit;
-  text-decoration: none;
-}
-
-.imgDark {
-  display: none;
-}
-
-@media (prefers-color-scheme: dark) {
-  html {
-    color-scheme: dark;
-  }
-
-  .imgLight {
-    display: none;
-  }
-  .imgDark {
-    display: unset;
-  }
+  background-color: var(--color-brand-cream);
+  color: var(--color-brand-dark);
 }
