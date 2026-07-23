@@ -53,7 +53,14 @@ export default function Home() {
     setDownloadUrl(null);
 
     try {
-      const response = await fetch('/api/presentations/export', {
+      // Call the API directly if NEXT_PUBLIC_API_URL is provided, 
+      // otherwise fallback to the Next.js rewrite (local dev).
+      // This directly bypasses Vercel/Netlify's strict 10-second proxy timeouts!
+      const baseUrl = process.env.NEXT_PUBLIC_API_URL 
+        ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') // remove trailing slash if present
+        : '';
+        
+      const response = await fetch(`${baseUrl}/api/presentations/export`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ topic, model }),
