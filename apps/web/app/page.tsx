@@ -24,7 +24,7 @@ export default function Home() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadingStep, setLoadingStep] = useState(0);
-  const [model, setModel] = useState<'nvidia' | 'gemini'>('gemini');
+  const [model, setModel] = useState<'nvidia' | 'gemini-2.5' | 'gemini-flash-lite'>('gemini-flash-lite');
   const [downloadUrl, setDownloadUrl] = useState<{url: string, filename: string} | null>(null);
 
   const loadingSteps = [
@@ -159,11 +159,12 @@ export default function Home() {
                   <div className="relative group">
                     <select 
                       value={model} 
-                      onChange={(e) => setModel(e.target.value as 'nvidia' | 'gemini')}
+                      onChange={(e) => setModel(e.target.value as 'nvidia' | 'gemini-2.5' | 'gemini-flash-lite')}
                       disabled={isGenerating}
                       className="appearance-none bg-transparent text-[var(--color-brand-warm)] hover:text-[var(--color-brand-dark)] font-medium text-xs sm:text-sm outline-none cursor-pointer px-2 py-2 pr-4 transition-colors"
                     >
-                      <option value="gemini">Gemini 2.5</option>
+                      <option value="gemini-flash-lite">Gemini Flash Lite</option>
+                      <option value="gemini-2.5">Gemini 2.5</option>
                       <option value="nvidia">NVIDIA 3.1</option>
                     </select>
                     <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-1 text-[var(--color-brand-warm)] group-hover:text-[var(--color-brand-dark)]">
