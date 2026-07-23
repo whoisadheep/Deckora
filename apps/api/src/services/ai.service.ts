@@ -179,11 +179,8 @@ export async function generatePresentationOutline(topic: string, modelChoice: st
       .map((iss) => `  - ${iss.path.join('.')}: ${iss.message}`)
       .join('\n');
     throw new Error(`Outline validation failed after retry:\n${retryErrorMsg}`);
-  } catch (error) {
-    if (error instanceof Error && error.message.startsWith('Outline validation failed')) {
-      throw error;
-    }
-    console.error('Error generating presentation outline:', error);
-    throw new Error('Failed to generate presentation outline');
+  } catch (error: any) {
+    console.error("AI Generation Error:", error);
+    throw new Error(`Failed to generate presentation outline: ${error?.message || String(error)}`);
   }
 }
