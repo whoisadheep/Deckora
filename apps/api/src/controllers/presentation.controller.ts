@@ -37,8 +37,12 @@ export async function exportPresentation(req: Request, res: Response) {
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.presentationml.presentation');
         res.setHeader('Content-Disposition', 'attachment; filename="presentation.pptx"');
         res.send(pptxBuffer);
-    } catch (error) {
-        console.error(`Error exporting presentation`, error);
-        res.status(500).json({ error: 'Failed to export presentation' });
+    } catch (error: any) {
+      console.error('Error exporting presentation:', error);
+      res.status(500).json({ 
+        error: 'Failed to export presentation', 
+        details: error?.message || String(error),
+        stack: error?.stack
+      });
     }
 }
