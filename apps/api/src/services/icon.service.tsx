@@ -108,6 +108,8 @@ function resolveIcon(title: string, iconHint?: string): React.ComponentType<any>
  * Render a react-icons icon to a PNG buffer (base64 data URI) at the given size.
  * The icon is rendered as white on a transparent background by default.
  */
+const iconCache = new Map<string, string>();
+
 export async function renderIconToPng(
   title: string,
   opts: { size?: number; color?: string; iconHint?: string } = {},
@@ -115,6 +117,12 @@ export async function renderIconToPng(
   const { size = 256, color = '#FFFFFF', iconHint } = opts;
 
   const IconComponent = resolveIcon(title, iconHint);
+  
+  // Cache key based on icon function name and options
+  const cacheKey = `${IconComponent.name}_${size}_${color}`;
+  if (iconCache.has(cacheKey)) {
+    return iconCache.get(cacheKey)!;
+  }
 
   // Render React element to SVG string
   const svgMarkup = ReactDOMServer.renderToStaticMarkup(
@@ -126,13 +134,21 @@ export async function renderIconToPng(
     ? svgMarkup
     : `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">${svgMarkup}</svg>`;
 
-  // Rasterize with sharp
-  const pngBuf = await sharp(Buffer.from(svgDoc))
+  // Rasterize with sharp — with a 5 second timeout to prevent hangs
+  const rasterize = sharp(Buffer.from(svgDoc))
     .resize(size, size)
     .png()
     .toBuffer();
 
-  return `image/png;base64,${pngBuf.toString('base64')}`;
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Icon render timed out')), 5000)
+  );
+
+  const pngBuf = await Promise.race([rasterize, timeout]);
+  const b64 = `image/png;base64,${pngBuf.toString('base64')}`;
+  
+  iconCache.set(cacheKey, b64);
+  return b64;
 }
 
 /**

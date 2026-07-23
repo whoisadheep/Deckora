@@ -12,25 +12,13 @@ const nvidiaClient = new OpenAI({
 
 const geminiClient = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
+
+
 // ── Zod schema matching the documented JSON contract ───────────────────
-const ShapeSchema = z.object({
-  type: z.enum(['rect', 'triangle', 'ellipse', 'roundRect', 'line']),
-  x: z.number(), // 0-100 relative to drawing box
-  y: z.number(), // 0-100 relative to drawing box
-  w: z.number(), // 0-100 relative width
-  h: z.number(), // 0-100 relative height
-  color: z.string(), // Hex without #, e.g., C05A35
-});
-
-const DrawingSchema = z.object({
-  shapes: z.array(ShapeSchema),
-});
-
 const BulletSchema = z.object({
   title: z.string(),
   description: z.string().optional(),
   icon: z.string().optional(),
-  drawing: DrawingSchema.optional(),
 });
 
 const SlideSchema = z.object({
@@ -40,7 +28,8 @@ const SlideSchema = z.object({
   subtitle: z.string().optional(),
   footerText: z.string().optional(),
   bullets: z.array(BulletSchema).optional(),
-  drawing: DrawingSchema.optional(),
+  slideIcon: z.string().optional(),
+  mermaid: z.string().optional(),
   speakerNotes: z.string().optional(),
 });
 
@@ -77,14 +66,15 @@ Rules:
 4. Alternate between 'cards_light', 'cards_dark', and 'rows' to keep pacing engaging. Use 'diagram' or 'split_graphic' for deep dives.
 5. Provide a contextual 'footerText' for slides where relevant (e.g., "Geography · Climate · Material availability").
 6. The VERY LAST SLIDE must be a 'Conclusion' or 'Summary'. Include at least 3 strong points.
-7. For custom geometric drawings: Instead of 'icon', you can provide a 'drawing' object. Use a 100x100 relative grid coordinate system where (x=0, y=0) is top-left.
-   - Shapes allowed: 'rect', 'triangle', 'ellipse', 'roundRect', 'line'.
-   - Available Brand Colors (hex without #): '3D322A' (Dark Brown), '5C4A3A' (Warm Brown), 'C05A35' (Rust Orange), 'D4784B' (Light Orange), 'EDE5DC' (Light Beige).
-   - CRITICAL: Do not just draw a single basic shape! You must build DETAILED, COMPOSITE diagrams using 5-20 shapes.
-   - Example (Floor plan): Use multiple 'rect' shapes (e.g., walls/rooms in Dark Brown) surrounding a central 'rect' (courtyard in Light Beige), with 'line' shapes for doors/paths.
-   - Example (Architecture): Use overlapping 'triangle' shapes for roofs, 'rect' for pillars, and 'ellipse' for domes. Combine colors to create depth.
-   - Use 'drawing' on individual bullets for 'cards_light' / 'cards_dark' to represent structures (like roof shapes).
-   - Use 'drawing' on the slide level for 'diagram' or 'split_graphic' layouts to construct large complex graphics.
+7. For icons and diagrams:
+   - On individual bullets, provide a descriptive 'icon' keyword (e.g. 'building', 'tree', 'sun', 'chart').
+   - For 'diagram' and 'split_graphic' slides, you MUST provide a 'mermaid' string containing valid Mermaid.js code.
+   - CRITICAL MERMAID RULES:
+     1. Use literal newline characters (\\n) to separate statements. Do NOT put everything on one line.
+     2. ALWAYS wrap node text in quotes to prevent syntax errors: e.g. A["Node Text (Info)"]
+     3. Stick to simple 'graph TD', 'mindmap', or 'pie'. Avoid 'gitGraph' as it is highly prone to syntax errors.
+     4. Do not wrap in markdown code blocks, just raw mermaid syntax in the JSON string.
+   - If 'mermaid' is provided, you do not need 'slideIcon'. Use 'slideIcon' only as a fallback.
 
 JSON Schema:
 {
@@ -99,19 +89,11 @@ JSON Schema:
         {
           "title": "Bullet Title",
           "description": "Optional description",
-          "icon": "Optional icon keyword",
-          "drawing": {
-            "shapes": [
-              { "type": "rect", "x": 10, "y": 10, "w": 80, "h": 50, "color": "C05A35" }
-            ]
-          }
+          "icon": "Optional icon keyword"
         }
       ],
-      "drawing": {
-        "shapes": [
-          { "type": "triangle", "x": 20, "y": 10, "w": 60, "h": 40, "color": "5C4A3A" }
-        ]
-      },
+      "slideIcon": "Optional icon keyword for the whole slide",
+      "mermaid": "graph TD\\n  A[Start] --> B[End]",
       "speakerNotes": "Optional notes"
     }
   ]
@@ -154,6 +136,11 @@ async function callAI(prompt: string, modelChoice: string = 'nvidia'): Promise<s
   }
 }
 
+// ── Pre-process AI output to fix common issues ────────────────────────
+function sanitizeOutline(parsed: any): any {
+  return parsed;
+}
+
 // ── Public function ────────────────────────────────────────────────────
 export async function generatePresentationOutline(topic: string, modelChoice: string = 'nvidia'): Promise<Outline> {
   const prompt = buildPrompt(topic);
@@ -163,7 +150,8 @@ export async function generatePresentationOutline(topic: string, modelChoice: st
     const raw = await callAI(prompt, modelChoice);
     const jsonStr = extractJson(raw);
     const parsed = JSON.parse(jsonStr);
-    const result = OutlineSchema.safeParse(parsed);
+    const sanitized = sanitizeOutline(parsed);
+    const result = OutlineSchema.safeParse(sanitized);
 
     if (result.success) {
       return result.data;
@@ -179,7 +167,8 @@ export async function generatePresentationOutline(topic: string, modelChoice: st
     const retryRaw = await callAI(retryPrompt, modelChoice);
     const retryJsonStr = extractJson(retryRaw);
     const retryParsed = JSON.parse(retryJsonStr);
-    const retryResult = OutlineSchema.safeParse(retryParsed);
+    const retrySanitized = sanitizeOutline(retryParsed);
+    const retryResult = OutlineSchema.safeParse(retrySanitized);
 
     if (retryResult.success) {
       return retryResult.data;

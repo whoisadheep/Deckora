@@ -11,7 +11,8 @@ export interface SlideData {
   subtitle?: string;
   footerText?: string;
   bullets?: any[];
-  drawing?: any;
+  slideIcon?: string;
+  mermaid?: string;
   speakerNotes?: string;
 }
 
@@ -57,32 +58,40 @@ function estimateTextHeight(text: string, fontSizePt: number, widthInches: numbe
   return lines * (fontSizePt / 72) * lineSpacing;
 }
 
-// ── Custom Drawing Renderer ──────────────────────────────────────────────
-function renderDrawing(slide: PptxGenJS.Slide, pptx: PptxGenJS, drawing: any, boxX: number, boxY: number, boxW: number, boxH: number) {
-  if (!drawing?.shapes || !Array.isArray(drawing.shapes)) return;
-
-  for (const shape of drawing.shapes) {
-    const x = boxX + (shape.x / 100) * boxW;
-    const y = boxY + (shape.y / 100) * boxH;
-    const w = (shape.w / 100) * boxW;
-    const h = (shape.h / 100) * boxH;
-    
-    let shapeType = pptx.ShapeType.rect;
-    if (shape.type === 'triangle') shapeType = pptx.ShapeType.triangle;
-    if (shape.type === 'ellipse') shapeType = pptx.ShapeType.ellipse;
-    if (shape.type === 'roundRect') shapeType = pptx.ShapeType.roundRect;
-    if (shape.type === 'line') shapeType = pptx.ShapeType.line;
-
-    const opts: any = { x, y, w, h };
-    if (shape.type === 'line') {
-      opts.line = { color: shape.color || C.rustOrange, width: 2 };
-    } else {
-      opts.fill = { color: shape.color || C.rustOrange };
-      if (shape.type === 'roundRect') opts.rectRadius = 0.1;
-    }
-    
-    slide.addShape(shapeType, opts);
+// ── Mermaid Renderer ───────────────────────────────────────────────────
+async function renderMermaidToPng(mermaidCode: string): Promise<string> {
+  // Strip markdown codeblocks (```mermaid ... ```) often added by AI
+  let code = mermaidCode.trim();
+  if (code.startsWith('```mermaid')) {
+    code = code.substring(10);
+  } else if (code.startsWith('```')) {
+    code = code.substring(3);
   }
+  if (code.endsWith('```')) {
+    code = code.substring(0, code.length - 3);
+  }
+  code = code.trim();
+
+  // We wrap the code in the JSON format mermaid.ink expects
+  const state = {
+    code: code,
+    mermaid: { theme: 'default' }
+  };
+  
+  // mermaid.ink uses base64 encoding of the JSON state object
+  const b64 = Buffer.from(JSON.stringify(state)).toString('base64');
+  const url = `https://mermaid.ink/img/${b64}`;
+  
+  const res = await fetch(url);
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => 'no text');
+    console.error(`Failed to fetch mermaid image: ${res.status} ${res.statusText}. URL: ${url}, Body: ${errorText}`);
+    throw new Error('Failed to fetch mermaid image');
+  }
+  
+  const arrayBuf = await res.arrayBuffer();
+  const buffer = Buffer.from(arrayBuf);
+  return `image/png;base64,${buffer.toString('base64')}`;
 }
 
 // ── Main entry point ──────────────────────────────────────────────────
@@ -90,29 +99,44 @@ export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inches
 
-  for (const data of slides) {
+  for (let idx = 0; idx < slides.length; idx++) {
+    const data = slides[idx];
+    if (!data) continue;
+
     const slide = pptx.addSlide();
     if (data.speakerNotes) slide.addNotes(data.speakerNotes);
 
-    if (data.layout === 'hero') {
-      await renderHeroSlide(slide, pptx, data);
-    } else if (data.layout === 'cards_light') {
-      await renderCardSlide(slide, pptx, data, false);
-    } else if (data.layout === 'cards_dark') {
-      await renderCardSlide(slide, pptx, data, true);
-    } else if (data.layout === 'rows') {
-      await renderRowsSlide(slide, pptx, data);
-    } else if (data.layout === 'split_graphic') {
-      await renderSplitGraphicSlide(slide, pptx, data);
-    } else if (data.layout === 'diagram') {
-      await renderDiagramSlide(slide, pptx, data);
-    } else {
-      // Fallback
-      await renderCardSlide(slide, pptx, data, false);
+    try {
+      console.log(`  Rendering slide ${idx + 1}/${slides.length}: ${data.layout} - "${data.title?.substring(0, 40)}"`);
+      if (data.layout === 'hero') {
+        await renderHeroSlide(slide, pptx, data);
+      } else if (data.layout === 'cards_light') {
+        await renderCardSlide(slide, pptx, data, false);
+      } else if (data.layout === 'cards_dark') {
+        await renderCardSlide(slide, pptx, data, true);
+      } else if (data.layout === 'rows') {
+        await renderRowsSlide(slide, pptx, data);
+      } else if (data.layout === 'split_graphic') {
+        await renderSplitGraphicSlide(slide, pptx, data);
+      } else if (data.layout === 'diagram') {
+        await renderDiagramSlide(slide, pptx, data);
+      } else {
+        // Fallback
+        await renderCardSlide(slide, pptx, data, false);
+      }
+    } catch (slideErr: any) {
+      console.error(`  ✗ Error rendering slide ${idx + 1} (${data.layout}): ${slideErr.message}`);
+      // Add a fallback error slide so the file still generates
+      slide.addText(`Error rendering: ${data.title}`, {
+        x: 1, y: 3, w: 11, h: 1.5,
+        fontSize: 24, color: C.rustOrange, fontFace: 'Georgia',
+      });
     }
   }
 
+  console.log('  Finalizing PPTX...');
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer;
+  console.log(`  ✓ PPTX generated (${(buffer.length / 1024).toFixed(0)} KB)`);
   if (process.env.PPTX_QA === 'true') {
     runQA(buffer);
   }
@@ -256,10 +280,8 @@ async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     const iconX = x + (cardW / 2) - (iconSize / 2);
     const iconY = circleY + (circleSize - iconSize) / 2;
 
-    if (bullet.drawing) {
-      renderDrawing(slide, pptx, bullet.drawing, iconX, iconY, iconSize, iconSize);
-    } else if (icons[i]) {
-      slide.addImage({ data: icons[i]!, x: iconX, y: iconY, w: iconSize, h: iconSize });
+    if (icons[i]) {
+      slide.addImage({ data: icons[i] as string, x: iconX, y: iconY, w: iconSize, h: iconSize });
     }
 
     // Title
@@ -394,30 +416,42 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
     fontFace: 'Georgia', valign: 'top',
   });
 
+  let textY = 2.0;
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: 0.8, y: 2.0, w: 5.5, h: 0.8,
       fontSize: 18, color: C.textMuted,
       fontFace: 'Arial', italic: true, valign: 'top',
     });
+    textY = 2.8;
   }
 
   if (data.bullets && data.bullets.length > 0) {
-    const textY = 3.0;
-    const bulletItems = data.bullets.map((b: any) => {
+    const bulletItems = data.bullets.flatMap((b: any) => {
       const title = typeof b === 'string' ? b : (b.title || '');
-      const desc = b.description ? `\n${b.description}` : '';
-      return {
-        text: `${title}${desc}`,
+      const desc = b.description ? b.description : '';
+      const arr = [];
+      arr.push({
+        text: title,
         options: {
           bullet: { code: '25CF', color: C.rustOrange } as any,
-          fontSize: 14, color: C.textDark, fontFace: 'Arial',
-          lineSpacingMultiple: 1.3, paraSpaceBefore: 12,
-        },
-      };
+          fontSize: 14, bold: true, color: C.textDark, fontFace: 'Arial',
+          paraSpaceBefore: 10, breakLine: true
+        }
+      });
+      if (desc) {
+        arr.push({
+          text: desc,
+          options: {
+            fontSize: 13, color: C.textMuted, fontFace: 'Arial',
+            paraSpaceBefore: 4, breakLine: true
+          }
+        });
+      }
+      return arr;
     });
     slide.addText(bulletItems, {
-      x: 0.8, y: textY, w: 5.5, h: 3.5, valign: 'top',
+      x: 0.8, y: textY, w: 5.5, h: 6.8 - textY, valign: 'top'
     });
   }
 
@@ -432,28 +466,44 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
     fill: { color: C.darkBrown }, rectRadius: 0.05,
   });
 
-  if (data.drawing) {
-    // Render custom drawing directly on the right side
-    renderDrawing(slide, pptx, data.drawing, boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
-  } else {
-    try {
-      const iconData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.bullets?.[0]?.icon });
+  try {
+    let imageData: string;
+    let isMermaid = false;
+    
+    if (data.mermaid) {
+      try {
+        imageData = await renderMermaidToPng(data.mermaid);
+        isMermaid = true;
+      } catch (e) {
+        console.warn('Mermaid render failed, falling back to icon', e);
+        imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+      }
+    } else {
+      imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+    }
+
+    if (isMermaid) {
+      slide.addImage({
+        data: imageData,
+        x: boxX + 0.4, y: boxY + 0.25, w: boxW - 0.8, h: boxH - 0.5,
+        sizing: { type: 'contain', w: boxW - 0.8, h: boxH - 0.5 }
+      });
+    } else {
       const iconSize = 2.5;
       slide.addImage({
-        data: iconData,
+        data: imageData,
         x: boxX + (boxW - iconSize) / 2,
         y: boxY + (boxH - iconSize) / 2 - 0.5,
         w: iconSize, h: iconSize
       });
-
       slide.addText(data.title, { // No toUpperCase
         x: boxX, y: boxY + (boxH - iconSize) / 2 + iconSize,
         w: boxW, h: 1.0,
         fontSize: 14, bold: true, color: C.rustOrange,
         fontFace: 'Arial', charSpacing: 3, align: 'center',
       });
-    } catch { /* ignore */ }
-  }
+    }
+  } catch { /* ignore */ }
 
   addFooter(slide, data.footerText, false);
 }
@@ -476,9 +526,38 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
     line: { color: C.cardBorder, width: 1 }
   });
 
-  if (data.drawing) {
-    renderDrawing(slide, pptx, data.drawing, boxX + 0.5, boxY + 0.5, boxW - 1, boxH - 1);
-  }
+  try {
+    let imageData: string;
+    let isMermaid = false;
+    
+    if (data.mermaid) {
+      try {
+        imageData = await renderMermaidToPng(data.mermaid);
+        isMermaid = true;
+      } catch (e) {
+        console.warn('Mermaid render failed, falling back to icon', e);
+        imageData = await renderIconToPng(data.title, { size: 512, color: '#C05A35', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+      }
+    } else {
+      imageData = await renderIconToPng(data.title, { size: 512, color: '#C05A35', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+    }
+
+    if (isMermaid) {
+      slide.addImage({
+        data: imageData,
+        x: boxX + 0.4, y: boxY + 0.25, w: boxW - 0.8, h: boxH - 0.5,
+        sizing: { type: 'contain', w: boxW - 0.8, h: boxH - 0.5 }
+      });
+    } else {
+      const iconSize = 3.0;
+      slide.addImage({
+        data: imageData,
+        x: boxX + (boxW - iconSize) / 2,
+        y: boxY + (boxH - iconSize) / 2,
+        w: iconSize, h: iconSize
+      });
+    }
+  } catch { /* ignore */ }
 
   // Text on right
   const textX = 7.0;
@@ -488,29 +567,41 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
     fontFace: 'Georgia', valign: 'top',
   });
 
+  let textY = 2.0;
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: textX, y: 2.0, w: 5.5, h: 0.8,
       fontSize: 18, color: C.textMuted,
       fontFace: 'Arial', italic: true, valign: 'top',
     });
+    textY = 2.8;
   }
 
   if (data.bullets && data.bullets.length > 0) {
-    const textY = 3.0;
-    const bulletItems = data.bullets.map((b: any, index: number) => {
+    const bulletItems = data.bullets.flatMap((b: any, index: number) => {
       const title = typeof b === 'string' ? b : (b.title || '');
-      const desc = b.description ? `\n${b.description}` : '';
-      return {
-        text: `${index + 1}    ${title}${desc}`,
+      const desc = b.description ? b.description : '';
+      const arr = [];
+      arr.push({
+        text: `${index + 1}    ${title}`,
         options: {
-          fontSize: 14, color: C.textDark, fontFace: 'Arial',
-          lineSpacingMultiple: 1.3, paraSpaceBefore: 12,
-        },
-      };
+          fontSize: 14, bold: true, color: C.textDark, fontFace: 'Arial',
+          paraSpaceBefore: 10, breakLine: true
+        }
+      });
+      if (desc) {
+        arr.push({
+          text: desc,
+          options: {
+            fontSize: 13, color: C.textDark, fontFace: 'Arial',
+            paraSpaceBefore: 4, breakLine: true
+          }
+        });
+      }
+      return arr;
     });
     slide.addText(bulletItems, {
-      x: textX, y: textY, w: 5.5, h: 3.5, valign: 'top',
+      x: textX, y: textY, w: 5.5, h: 6.8 - textY, valign: 'top'
     });
   }
 

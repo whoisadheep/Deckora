@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   allowedDevOrigins: ['local.loca.lt', 'loca.lt'],
+  experimental: {
+    proxyTimeout: 120000,
+  },
   async rewrites() {
     return [
       {
