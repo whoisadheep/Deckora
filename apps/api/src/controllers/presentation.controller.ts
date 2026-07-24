@@ -80,8 +80,9 @@ export async function exportPresentation(req: Request, res: Response) {
         console.error('Error exporting presentation:', error);
         if (!res.headersSent) {
             res.status(500).json({ 
-                error: 'Failed to export presentation', 
-                details: error?.message || String(error),
+                status: 'error',
+                message: error?.message || 'Failed to export presentation', 
+                details: String(error),
                 stack: error?.stack
             });
         } else {

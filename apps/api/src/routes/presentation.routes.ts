@@ -9,10 +9,16 @@ const upload = multer({
   fileFilter: (_req, file, cb) => {
     const allowed = [
       'application/pdf',
+      'application/x-pdf',
+      'application/acrobat',
+      'application/vnd.pdf',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
       'text/plain',
       'text/markdown',
+      'text/x-markdown',
       'image/jpeg',
+      'image/jpg',
+      'image/pjpeg',
       'image/png',
       'image/webp',
       'image/gif'

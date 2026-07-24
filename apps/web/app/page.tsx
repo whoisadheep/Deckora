@@ -98,8 +98,18 @@ export default function Home() {
 
       const response_final = response;
 
-      if (!response_final.ok && !response_final.body) {
-        throw new Error('Failed to generate presentation');
+      if (!response_final.ok) {
+        const text = await response_final.text();
+        let errMsg = 'Failed to generate presentation';
+        try {
+          const errorData = JSON.parse(text);
+          errMsg = errorData.message || errorData.error || errMsg;
+        } catch {
+          if (text.includes('Unsupported file type') || text.includes('File too large')) {
+             errMsg = text.match(/(Unsupported file type[^<]*|File too large[^<]*)/)?.[0] || errMsg;
+          }
+        }
+        throw new Error(errMsg);
       }
 
       if (response_final.body) {
