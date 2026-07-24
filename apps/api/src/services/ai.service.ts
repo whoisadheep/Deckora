@@ -22,6 +22,7 @@ const BulletSchema = z.object({
 });
 
 const SlideSchema = z.object({
+  section: z.string().optional(),
   layout: z.enum(['hero', 'cards_light', 'cards_dark', 'rows', 'split_graphic', 'diagram']),
   kicker: z.string().optional(),
   title: z.string(),
@@ -29,6 +30,7 @@ const SlideSchema = z.object({
   footerText: z.string().optional(),
   bullets: z.array(BulletSchema).optional(),
   slideIcon: z.string().optional(),
+  userImage: z.string().optional(),
   mermaid: z.string().optional(),
   speakerNotes: z.string().optional(),
 });
@@ -48,11 +50,34 @@ function extractJson(raw: string): string {
 }
 
 // ── Prompt builder ─────────────────────────────────────────────────────
-function buildPrompt(topic: string, fixInstruction?: string): string {
+function buildPrompt(topic: string, fixInstruction?: string, documentContext?: string, uploadedImages?: string[]): string {
   let prompt = `
 You are an expert presentation designer crafting high-end, editorial-quality presentations.
 Create a well-structured presentation outline about: "${topic}".
 The presentation should be between 8 to 10 slides.
+`;
+
+  if (documentContext) {
+    prompt += `
+REFERENCE DOCUMENT:
+"""
+${documentContext}
+"""
+
+CRITICAL: Base ALL slide content — titles, bullet descriptions, subtitles, and speaker notes — on the reference document above. Extract specific facts, statistics, quotes, and examples directly from it. Do NOT invent information that isn't in the document. If the document doesn't cover a subtopic, skip it rather than fabricating content.
+`;
+  }
+
+  if (uploadedImages && uploadedImages.length > 0) {
+    prompt += `
+UPLOADED IMAGES AVAILABLE:
+${uploadedImages.map(img => `- ${img}`).join('\n')}
+
+CRITICAL: The user has provided the images listed above. If a slide layout includes a graphic (e.g. 'hero', 'split_graphic', or 'diagram') and one of these images is highly relevant to the slide's content, specify the image's EXACT filename in the 'userImage' field of the JSON instead of using an icon or mermaid diagram. Do NOT invent image filenames that are not in this list.
+`;
+  }
+
+  prompt += `
 
 Rules:
 1. Return ONLY a valid JSON object matching the schema below. No markdown formatting, no code blocks, no intro/outro text.
@@ -75,12 +100,15 @@ Rules:
      3. Stick to simple 'graph TD', 'mindmap', or 'pie'. Avoid 'gitGraph' as it is highly prone to syntax errors.
      4. Do not wrap in markdown code blocks, just raw mermaid syntax in the JSON string.
    - If 'mermaid' is provided, you do not need 'slideIcon'. Use 'slideIcon' only as a fallback.
+8. Every bullet description and subtitle must include at least one concrete, specific detail — a named example, a real number, a technical term, a date, or a specific case. Never write generic filler like "AI is transforming industries" or "this has a big impact" without naming how, where, with what evidence, or by how much. If the topic doesn't have a specific fact readily available, pick a narrower, more specific angle on the bullet rather than writing vaguely.
+9. Group related slides under a shared 'section' label (e.g. all slides about origins share "origins", all slides about challenges share "challenges"). Use 2-4 distinct section labels across the deck, not one per slide.
 
 JSON Schema:
 {
   "slides": [
     {
-      "layout": "hero" | "cards_light" | "cards_dark" | "rows" | "split_graphic",
+      "section": "Optional section grouping label",
+      "layout": "hero" | "cards_light" | "cards_dark" | "rows" | "split_graphic" | "diagram",
       "kicker": "Optional small top text",
       "title": "Slide Title",
       "subtitle": "Optional subtitle",
@@ -93,6 +121,7 @@ JSON Schema:
         }
       ],
       "slideIcon": "Optional icon keyword for the whole slide",
+      "userImage": "Optional filename from the UPLOADED IMAGES list (e.g. 'photo.jpg')",
       "mermaid": "graph TD\\n  A[Start] --> B[End]",
       "speakerNotes": "Optional notes"
     }
@@ -143,11 +172,19 @@ function sanitizeOutline(parsed: any): any {
 }
 
 // ── Public function ────────────────────────────────────────────────────
-export async function generatePresentationOutline(topic: string, modelChoice: string = 'nvidia'): Promise<Outline> {
-  const prompt = buildPrompt(topic);
+export async function generatePresentationOutline(
+  topic: string, 
+  modelChoice: string = 'nvidia', 
+  documentContext?: string, 
+  uploadedImages?: string[],
+  onProgress?: (step: number, message: string) => void
+): Promise<Outline> {
+  onProgress?.(0, 'Researching topic...');
+  const prompt = buildPrompt(topic, undefined, documentContext, uploadedImages);
 
   try {
     // First attempt
+    onProgress?.(1, 'Structuring presentation...');
     const raw = await callAI(prompt, modelChoice);
     const jsonStr = extractJson(raw);
     const parsed = JSON.parse(jsonStr);
@@ -164,7 +201,7 @@ export async function generatePresentationOutline(topic: string, modelChoice: st
       .join('\n');
     console.warn(`[AI] First attempt failed Zod validation:\n${errorMsg}\nRetrying...`);
 
-    const retryPrompt = buildPrompt(topic, errorMsg);
+    const retryPrompt = buildPrompt(topic, errorMsg, documentContext, uploadedImages);
     const retryRaw = await callAI(retryPrompt, modelChoice);
     const retryJsonStr = extractJson(retryRaw);
     const retryParsed = JSON.parse(retryJsonStr);

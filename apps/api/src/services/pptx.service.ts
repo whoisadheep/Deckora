@@ -3,8 +3,14 @@ import { renderIconToPng, renderTopicIcon } from './icon.service.js';
 import { execSync } from 'child_process';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
+
+// @ts-ignore - TS1470: import.meta is not allowed in CommonJS but this runs in ESM context
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 export interface SlideData {
+  section?: string;
   layout: string;
   kicker?: string;
   title: string;
@@ -12,6 +18,7 @@ export interface SlideData {
   footerText?: string;
   bullets?: any[];
   slideIcon?: string;
+  userImage?: string;
   mermaid?: string;
   speakerNotes?: string;
 }
@@ -32,6 +39,16 @@ const C = {
   white:       'FFFFFF',
   accentGold:  'B8915A',
 };
+
+function getSectionAccentColor(section?: string): string {
+  if (!section) return C.rustOrange;
+  const accents = [C.rustOrange, C.accentGold, C.lightOrange];
+  let hash = 0;
+  for (let i = 0; i < section.length; i++) {
+    hash = section.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return accents[Math.abs(hash) % accents.length] || C.rustOrange;
+}
 
 // ── Contextual Footer ────────────────────────────────────────────────
 function addFooter(slide: PptxGenJS.Slide, text?: string, dark = false) {
@@ -75,14 +92,32 @@ async function renderMermaidToPng(mermaidCode: string): Promise<string> {
   // We wrap the code in the JSON format mermaid.ink expects
   const state = {
     code: code,
-    mermaid: { theme: 'default' }
+    mermaid: {
+      theme: 'base',
+      themeVariables: {
+        primaryColor: '#EDE5DC',
+        primaryTextColor: '#2D241E',
+        primaryBorderColor: '#C05A35',
+        lineColor: '#C05A35',
+        secondaryColor: '#D8CFC5',
+        tertiaryColor: '#F5F0EB',
+        fontFamily: 'Arial',
+      }
+    }
   };
   
   // mermaid.ink uses base64 encoding of the JSON state object
   const b64 = Buffer.from(JSON.stringify(state)).toString('base64');
   const url = `https://mermaid.ink/img/${b64}`;
   
-  const res = await fetch(url);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  let res;
+  try {
+    res = await fetch(url, { signal: controller.signal });
+  } finally {
+    clearTimeout(timeoutId);
+  }
   if (!res.ok) {
     const errorText = await res.text().catch(() => 'no text');
     console.error(`Failed to fetch mermaid image: ${res.status} ${res.statusText}. URL: ${url}, Body: ${errorText}`);
@@ -95,10 +130,16 @@ async function renderMermaidToPng(mermaidCode: string): Promise<string> {
 }
 
 // ── Main entry point ──────────────────────────────────────────────────
-export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
+export async function generatePptx(
+  slides: SlideData[], 
+  uploadedImages: any[] = [],
+  onProgress?: (step: number, message: string) => void
+): Promise<Buffer> {
+  onProgress?.(2, 'Generating layouts...');
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inches
 
+  onProgress?.(3, 'Rendering icons and diagrams...');
   for (let idx = 0; idx < slides.length; idx++) {
     const data = slides[idx];
     if (!data) continue;
@@ -109,7 +150,7 @@ export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
     try {
       console.log(`  Rendering slide ${idx + 1}/${slides.length}: ${data.layout} - "${data.title?.substring(0, 40)}"`);
       if (data.layout === 'hero') {
-        await renderHeroSlide(slide, pptx, data);
+        await renderHeroSlide(slide, pptx, data, uploadedImages);
       } else if (data.layout === 'cards_light') {
         await renderCardSlide(slide, pptx, data, false);
       } else if (data.layout === 'cards_dark') {
@@ -117,9 +158,9 @@ export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
       } else if (data.layout === 'rows') {
         await renderRowsSlide(slide, pptx, data);
       } else if (data.layout === 'split_graphic') {
-        await renderSplitGraphicSlide(slide, pptx, data);
+        await renderSplitGraphicSlide(slide, pptx, data, uploadedImages);
       } else if (data.layout === 'diagram') {
-        await renderDiagramSlide(slide, pptx, data);
+        await renderDiagramSlide(slide, pptx, data, uploadedImages);
       } else {
         // Fallback
         await renderCardSlide(slide, pptx, data, false);
@@ -134,6 +175,7 @@ export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
     }
   }
 
+  onProgress?.(4, 'Building PPTX file...');
   console.log('  Finalizing PPTX...');
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer;
   console.log(`  ✓ PPTX generated (${(buffer.length / 1024).toFixed(0)} KB)`);
@@ -146,13 +188,30 @@ export async function generatePptx(slides: SlideData[]): Promise<Buffer> {
 // ═══════════════════════════════════════════════════════════════════════
 // 1. HERO SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData) {
+async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
   slide.background = { color: C.darkBrown };
+  
+  // Render user image if provided, otherwise default triangle
+  let renderedImage = false;
+  if (data.userImage) {
+    const matchedImg = uploadedImages.find(img => img.originalname === data.userImage);
+    if (matchedImg) {
+      const base64Data = `data:${matchedImg.mimetype};base64,${matchedImg.buffer.toString('base64')}`;
+      slide.addImage({
+        data: base64Data,
+        x: 7.5, y: 1.0, w: 5.5, h: 5.5,
+        sizing: { type: 'contain', w: 5.5, h: 5.5 }
+      });
+      renderedImage = true;
+    }
+  }
 
-  slide.addShape(pptx.ShapeType.triangle, {
-    x: 8.5, y: 3.8, w: 6, h: 5,
-    fill: { color: C.rustOrange },
-  });
+  if (!renderedImage) {
+    slide.addShape(pptx.ShapeType.triangle, {
+      x: 8.5, y: 3.8, w: 6, h: 5,
+      fill: { color: C.rustOrange },
+    });
+  }
 
   if (data.kicker) {
     slide.addText(data.kicker.toUpperCase(), {
@@ -266,13 +325,12 @@ async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
       fill: { color: cardBgColor }, rectRadius: 0.12,
     });
 
-    // Icon Circle
     const circleSize = 0.9;
     const circleX = x + (cardW / 2) - (circleSize / 2);
     const circleY = cardY + 0.4;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: circleX, y: circleY, w: circleSize, h: circleSize,
-      fill: { color: C.rustOrange },
+      fill: { color: getSectionAccentColor(data.section) },
     });
 
     // Icon Image (white)
@@ -328,7 +386,7 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
 
   if (!data.bullets || data.bullets.length === 0) return;
 
-  const numRows = Math.min(data.bullets.length, 5);
+  const numRows = Math.min(data.bullets.length, data.footerText ? 4 : 5);
   const startY = 2.2;
   const rowH = 0.9;
   const gapY = 0.1;
@@ -363,7 +421,7 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     const circleSize = 0.6;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: 0.8, y: y + 0.15, w: circleSize, h: circleSize,
-      fill: { color: C.rustOrange }, // or alternate colors, e.g. a green if matching Claude but let's stick to rust
+      fill: { color: getSectionAccentColor(data.section) }, // or alternate colors, e.g. a green if matching Claude but let's stick to rust
     });
 
     // Icon
@@ -406,7 +464,7 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
 // ═══════════════════════════════════════════════════════════════════════
 // 4. SPLIT GRAPHIC SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData) {
+async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
   slide.background = { color: C.white };
 
   // Left text
@@ -434,7 +492,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
       arr.push({
         text: title,
         options: {
-          bullet: { code: '25CF', color: C.rustOrange } as any,
+          bullet: { code: '25CF', color: getSectionAccentColor(data.section) } as any,
           fontSize: 14, bold: true, color: C.textDark, fontFace: 'Arial',
           paraSpaceBefore: 10, breakLine: true
         }
@@ -467,22 +525,34 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
   });
 
   try {
-    let imageData: string;
+    let imageData: string = '';
     let isMermaid = false;
+    let isUserImage = false;
     
-    if (data.mermaid) {
-      try {
-        imageData = await renderMermaidToPng(data.mermaid);
-        isMermaid = true;
-      } catch (e) {
-        console.warn('Mermaid render failed, falling back to icon', e);
-        imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+    if (data.userImage) {
+      const matchedImg = uploadedImages.find(img => img.originalname === data.userImage);
+      if (matchedImg) {
+        imageData = `data:${matchedImg.mimetype};base64,${matchedImg.buffer.toString('base64')}`;
+        isUserImage = true;
       }
-    } else {
-      imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
     }
 
-    if (isMermaid) {
+    if (!isUserImage) {
+      if (data.mermaid) {
+        try {
+          imageData = await renderMermaidToPng(data.mermaid);
+          isMermaid = true;
+        } catch (e) {
+          console.warn('Mermaid render failed, falling back to icon', e);
+          imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+        }
+      } else {
+        imageData = await renderIconToPng(data.title, { size: 512, color: '#FFFFFF', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+      }
+    }
+
+    // @ts-ignore - assigned in branches
+    if (isMermaid || isUserImage) {
       slide.addImage({
         data: imageData,
         x: boxX + 0.4, y: boxY + 0.25, w: boxW - 0.8, h: boxH - 0.5,
@@ -499,7 +569,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
       slide.addText(data.title, { // No toUpperCase
         x: boxX, y: boxY + (boxH - iconSize) / 2 + iconSize,
         w: boxW, h: 1.0,
-        fontSize: 14, bold: true, color: C.rustOrange,
+        fontSize: 14, bold: true, color: getSectionAccentColor(data.section),
         fontFace: 'Arial', charSpacing: 3, align: 'center',
       });
     }
@@ -511,7 +581,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
 // ═══════════════════════════════════════════════════════════════════════
 // 5. DIAGRAM SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData) {
+async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
   slide.background = { color: C.cream };
 
   // Diagram on left
@@ -527,22 +597,34 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
   });
 
   try {
-    let imageData: string;
+    let imageData: string = '';
     let isMermaid = false;
+    let isUserImage = false;
     
-    if (data.mermaid) {
-      try {
-        imageData = await renderMermaidToPng(data.mermaid);
-        isMermaid = true;
-      } catch (e) {
-        console.warn('Mermaid render failed, falling back to icon', e);
-        imageData = await renderIconToPng(data.title, { size: 512, color: '#C05A35', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+    if (data.userImage) {
+      const matchedImg = uploadedImages.find(img => img.originalname === data.userImage);
+      if (matchedImg) {
+        imageData = `data:${matchedImg.mimetype};base64,${matchedImg.buffer.toString('base64')}`;
+        isUserImage = true;
       }
-    } else {
-      imageData = await renderIconToPng(data.title, { size: 512, color: '#C05A35', iconHint: data.slideIcon || data.bullets?.[0]?.icon });
     }
 
-    if (isMermaid) {
+    if (!isUserImage) {
+      if (data.mermaid) {
+        try {
+          imageData = await renderMermaidToPng(data.mermaid);
+          isMermaid = true;
+        } catch (e) {
+          console.warn('Mermaid render failed, falling back to icon', e);
+          imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+        }
+      } else {
+        imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+      }
+    }
+
+    // @ts-ignore - assigned in branches
+    if (isMermaid || isUserImage) {
       slide.addImage({
         data: imageData,
         x: boxX + 0.4, y: boxY + 0.25, w: boxW - 0.8, h: boxH - 0.5,

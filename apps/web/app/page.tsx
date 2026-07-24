@@ -1,11 +1,18 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 
 // Inline SVG icons (no external dependency)
 const PlusIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+const ImageIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <polyline points="21 15 16 10 5 21" />
   </svg>
 );
 const MicIcon = () => (
@@ -26,6 +33,10 @@ export default function Home() {
   const [loadingStep, setLoadingStep] = useState(0);
   const [model, setModel] = useState<'nvidia' | 'gemini-2.5' | 'gemini-flash-lite'>('gemini-flash-lite');
   const [downloadUrl, setDownloadUrl] = useState<{url: string, filename: string} | null>(null);
+  const [file, setFile] = useState<File | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [images, setImages] = useState<File[]>([]);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const loadingSteps = [
     "Research",
@@ -60,31 +71,95 @@ export default function Home() {
         ? process.env.NEXT_PUBLIC_API_URL.replace(/\/$/, '') // remove trailing slash if present
         : '';
         
-      const response = await fetch(`${baseUrl}/api/presentations/export`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ topic, model }),
-      });
+      let response: Response;
 
-      if (!response.ok) {
+      if (file || images.length > 0) {
+        // Send as multipart FormData when a document or images are attached
+        const formData = new FormData();
+        formData.append('topic', topic);
+        formData.append('model', model);
+        if (file) {
+          formData.append('document', file);
+        }
+        images.forEach(img => {
+          formData.append('images', img);
+        });
+
+        response = await fetch(`${baseUrl}/api/presentations/export`, {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        // Send as JSON when no files (backward compatible)
+        response = await fetch(`${baseUrl}/api/presentations/export`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ topic, model }),
+        });
+      }
+
+      const response_final = response;
+
+      if (!response_final.ok && !response_final.body) {
         throw new Error('Failed to generate presentation');
       }
 
-      // Handle file download safely for mobile devices
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const filename = `${topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pptx`;
-      
-      // Save to state so user can manually click it if auto-download is blocked
-      setDownloadUrl({ url, filename });
+      if (response_final.body) {
+        const reader = response_final.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
 
-      // Attempt auto-download (may be blocked on iOS Safari)
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          // Keep the last partial line in the buffer
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            
+            try {
+              const data = JSON.parse(line);
+              
+              if (data.status === 'progress') {
+                setLoadingStep(data.step);
+              } else if (data.status === 'error') {
+                throw new Error(data.message || 'Error generating presentation');
+              } else if (data.status === 'complete' && data.pptxBase64) {
+                setLoadingStep(4);
+                // Convert base64 to blob
+                const byteCharacters = atob(data.pptxBase64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) {
+                  byteNumbers[i] = byteCharacters.charCodeAt(i);
+                }
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+                
+                const url = window.URL.createObjectURL(blob);
+                const filename = `${topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pptx`;
+                
+                setDownloadUrl({ url, filename });
+
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+              }
+            } catch (parseErr: any) {
+              // Ignore partial JSON parsing errors if somehow it wasn't split correctly
+              if (parseErr.name !== 'SyntaxError') {
+                throw parseErr;
+              }
+            }
+          }
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Something went wrong');
     } finally {
@@ -134,7 +209,7 @@ export default function Home() {
             Generate <span className="text-[var(--color-brand-orange)]">Beautiful</span> Presentations
           </h2>
           <p className="text-base sm:text-lg text-[var(--color-brand-warm)] max-w-lg mx-auto leading-relaxed px-4">
-            Enter any topic below. Our AI will research, write, and design a stunning PowerPoint for you in seconds.
+            Enter any topic below, or upload a document. Our AI will research, write, and design a stunning PowerPoint for you in seconds.
           </p>
 
           <div className="mt-8 max-w-2xl mx-auto px-2">
@@ -148,11 +223,78 @@ export default function Home() {
                 rows={2}
                 className="w-full px-3 py-2 outline-none text-base md:text-lg bg-transparent text-[var(--color-brand-dark)] placeholder-[var(--color-brand-border)] disabled:opacity-50 min-w-0 resize-none"
               />
+              {/* Attached file & image chips */}
+              {(file || images.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2 px-3 py-1">
+                  {file && (
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-brand-cream)] text-xs font-medium text-[var(--color-brand-dark)] border border-[var(--color-brand-border)]">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" />
+                      </svg>
+                      {file.name}
+                      <button
+                        type="button"
+                        onClick={() => setFile(null)}
+                        className="ml-0.5 hover:text-red-500 transition-colors cursor-pointer"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </span>
+                  )}
+                  {images.map((img, idx) => (
+                    <span key={`${img.name}-${idx}`} className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[var(--color-brand-cream)] text-xs font-medium text-[var(--color-brand-dark)] border border-[var(--color-brand-border)]">
+                      <ImageIcon />
+                      {img.name}
+                      <button
+                        type="button"
+                        onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
+                        className="ml-0.5 hover:text-red-500 transition-colors cursor-pointer"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <div className="flex justify-between items-center px-1 mt-2">
-                <div className="flex items-center">
-                  <button type="button" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer">
+                <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} title="Add Document" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer">
                     <PlusIcon />
                   </button>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".pdf,.docx,.txt,.md"
+                    className="hidden"
+                    onChange={(e) => {
+                      const selected = e.target.files?.[0] || null;
+                      setFile(selected);
+                      e.target.value = '';
+                    }}
+                  />
+                  <button type="button" onClick={() => imageInputRef.current?.click()} title="Add Images" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer">
+                    <ImageIcon />
+                  </button>
+                  <input
+                    ref={imageInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.files || []);
+                      if (images.length + selected.length > 8) {
+                        alert("You can only upload up to 8 images.");
+                        return;
+                      }
+                      setImages(prev => [...prev, ...selected]);
+                      e.target.value = '';
+                    }}
+                  />
                 </div>
                 
                 <div className="flex items-center gap-1 sm:gap-2">
