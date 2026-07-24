@@ -1,4 +1,4 @@
-import * as pdfParse from 'pdf-parse';
+import pdfParse from 'pdf-parse';
 import mammoth from 'mammoth';
 
 const MAX_CONTEXT_CHARS = 12_000;
@@ -12,7 +12,8 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
   let raw: string;
 
   if (mimeType === 'application/pdf') {
-    const data = await (pdfParse as any)(buffer);
+    const parse = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default;
+    const data = await parse(buffer);
     raw = data.text;
   } else if (
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
