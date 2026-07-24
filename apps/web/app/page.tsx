@@ -34,9 +34,7 @@ export default function Home() {
   const [model, setModel] = useState<'nvidia' | 'gemini-2.5' | 'gemini-flash-lite'>('gemini-flash-lite');
   const [downloadUrl, setDownloadUrl] = useState<{url: string, filename: string} | null>(null);
   const [file, setFile] = useState<File | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const [images, setImages] = useState<File[]>([]);
-  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const loadingSteps = [
     "Research",
@@ -262,39 +260,37 @@ export default function Home() {
               )}
               <div className="flex justify-between items-center px-1 mt-2">
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => fileInputRef.current?.click()} title="Add Document" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer">
+                  <label title="Add Document" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer flex items-center justify-center">
                     <PlusIcon />
-                  </button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.docx,.txt,.md"
-                    className="hidden"
-                    onChange={(e) => {
-                      const selected = e.target.files?.[0] || null;
-                      setFile(selected);
-                      e.target.value = '';
-                    }}
-                  />
-                  <button type="button" onClick={() => imageInputRef.current?.click()} title="Add Images" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer">
+                    <input
+                      type="file"
+                      accept=".pdf,.docx,.txt,.md"
+                      className="hidden"
+                      onChange={(e) => {
+                        const selected = e.target.files?.[0] || null;
+                        setFile(selected);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
+                  <label title="Add Images" className="p-2 text-[var(--color-brand-border)] hover:text-[var(--color-brand-dark)] transition-colors rounded-full hover:bg-[var(--color-brand-cream)] cursor-pointer flex items-center justify-center">
                     <ImageIcon />
-                  </button>
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/jpeg,image/png,image/webp,image/gif"
-                    multiple
-                    className="hidden"
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.files || []);
-                      if (images.length + selected.length > 8) {
-                        alert("You can only upload up to 8 images.");
-                        return;
-                      }
-                      setImages(prev => [...prev, ...selected]);
-                      e.target.value = '';
-                    }}
-                  />
+                    <input
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp,image/gif"
+                      multiple
+                      className="hidden"
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.files || []);
+                        if (images.length + selected.length > 8) {
+                          alert("You can only upload up to 8 images.");
+                          return;
+                        }
+                        setImages(prev => [...prev, ...selected]);
+                        e.target.value = '';
+                      }}
+                    />
+                  </label>
                 </div>
                 
                 <div className="flex items-center gap-1 sm:gap-2">
