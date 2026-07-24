@@ -3,11 +3,6 @@ import { renderIconToPng, renderTopicIcon } from './icon.service.js';
 import { execSync } from 'child_process';
 import { writeFileSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
-
-// @ts-ignore - TS1470: import.meta is not allowed in CommonJS but this runs in ESM context
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export interface SlideData {
   section?: string;
