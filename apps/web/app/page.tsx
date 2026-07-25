@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
-
+import { useState, useEffect } from 'react';
+import { FadeUpText } from '../components/ui/FadeUpText';
+import { GlowingBox } from '../components/ui/GlowingBox';
+import { AnimatedLoader } from '../components/ui/AnimatedLoader';
 // Inline SVG icons (no external dependency)
 const PlusIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -213,15 +215,21 @@ export default function Home() {
       {/* Main Content */}
       <main className="flex-1 flex flex-col items-center justify-center px-4">
         <div className="max-w-2xl w-full text-center space-y-8">
-          <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight px-2" style={{ fontFamily: 'Georgia, serif' }}>
-            Generate <span className="text-[var(--color-brand-orange)]">Beautiful</span> Presentations
-          </h2>
-          <p className="text-base sm:text-lg text-[var(--color-brand-warm)] max-w-lg mx-auto leading-relaxed px-4">
-            Enter any topic below, or upload a document. Our AI will research, write, and design a stunning PowerPoint for you in seconds.
-          </p>
+          <FadeUpText delay={0.1}>
+            <h2 className="text-4xl sm:text-5xl md:text-6xl font-extrabold tracking-tight px-2" style={{ fontFamily: 'Georgia, serif' }}>
+              Generate <span className="text-[var(--color-brand-orange)]">Beautiful</span> Presentations
+            </h2>
+          </FadeUpText>
+          <FadeUpText delay={0.3}>
+            <p className="text-base sm:text-lg text-[var(--color-brand-warm)] max-w-lg mx-auto leading-relaxed px-4">
+              Enter any topic below, or upload a document. Our AI will research, write, and design a stunning PowerPoint for you in seconds.
+            </p>
+          </FadeUpText>
 
-          <div className="mt-8 max-w-2xl mx-auto px-2">
-            <form onSubmit={handleGenerate} className={`relative shadow-xl rounded-3xl overflow-hidden bg-white border transition-colors duration-300 ${isGenerating ? 'border-[var(--color-brand-orange)] shadow-orange-500/20' : 'border-[var(--color-brand-border)]'} p-3 flex flex-col`}>
+          <FadeUpText delay={0.5}>
+            <div className="mt-8 max-w-2xl mx-auto px-2">
+              <GlowingBox isGlowing={isGenerating}>
+                <form onSubmit={handleGenerate} className="p-3 flex flex-col relative rounded-3xl overflow-hidden bg-white border border-[var(--color-brand-border)]">
               <textarea 
                 placeholder="Write a topic..."
                 value={topic}
@@ -337,7 +345,8 @@ export default function Home() {
                   </button>
                 </div>
               </div>
-            </form>
+                </form>
+              </GlowingBox>
 
             {/* Success Download Button for Mobile */}
             {downloadUrl && !isGenerating && (
@@ -358,45 +367,10 @@ export default function Home() {
 
             {/* Creative Loading State */}
             <div className={`transition-all duration-500 ease-in-out overflow-hidden ${isGenerating ? 'max-h-32 opacity-100 mt-6' : 'max-h-0 opacity-0 mt-0'}`}>
-              <div className="text-left bg-white rounded-xl border border-[var(--color-brand-border)] p-6 pb-10 shadow-sm relative">
-                <div className="relative flex justify-between items-center w-full mt-2 px-2">
-                  {/* Background line */}
-                  <div className="absolute top-1/2 left-0 w-full h-1 bg-[var(--color-brand-cream)] -translate-y-1/2 rounded-full"></div>
-                  {/* Animated fill line */}
-                  <div 
-                    className="absolute top-1/2 left-0 h-1 bg-[var(--color-brand-orange)] -translate-y-1/2 rounded-full transition-all duration-[3000ms] ease-linear"
-                    style={{ width: `${(loadingStep / (loadingSteps.length - 1)) * 100}%` }}
-                  ></div>
-                  
-                  {/* Nodes */}
-                  {loadingSteps.map((step, index) => {
-                    const isActive = index <= loadingStep;
-                    const isCurrent = index === loadingStep;
-                    return (
-                      <div key={step} className="relative z-10 flex flex-col items-center">
-                        <div 
-                          className={`w-4 h-4 rounded-full border-2 transition-all duration-500 flex items-center justify-center ${
-                            isActive 
-                              ? 'bg-[var(--color-brand-orange)] border-[var(--color-brand-orange)] scale-110' 
-                              : 'bg-white border-[var(--color-brand-border)]'
-                          }`}
-                        >
-                          {isActive && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
-                        </div>
-                        <span 
-                          className={`absolute top-6 text-[9px] md:text-[10px] font-bold tracking-wider uppercase transition-colors duration-500 whitespace-nowrap ${
-                            isCurrent ? 'text-[var(--color-brand-orange)] block' : (isActive ? 'text-[var(--color-brand-dark)] hidden sm:block' : 'text-[var(--color-brand-warm)] hidden sm:block')
-                          }`}
-                        >
-                          {step}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <AnimatedLoader steps={loadingSteps} currentStep={loadingStep} />
             </div>
-          </div>
+            </div>
+          </FadeUpText>
 
           {error && (
             <p className="text-red-500 mt-4 text-sm font-medium">{error}</p>
