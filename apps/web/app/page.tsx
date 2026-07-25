@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import Lenis from 'lenis';
+import 'lenis/dist/lenis.css';
 import { AnimatedLoader } from '../components/ui/AnimatedLoader';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -716,7 +718,7 @@ export default function Home() {
                 {previewImages.length === 0 && generatedSlides.length > 0 && (
                   <div className="w-full mb-[32px]">
                     <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
-                    <div ref={previewWrapperRef} className="flex flex-col items-center pb-[16px] preview-strip max-h-[600px] overflow-y-auto overscroll-contain">
+                    <div ref={previewWrapperRef} className="flex flex-col items-center pb-[16px] preview-strip max-h-[600px] overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                       <div ref={previewContentRef} className="w-full flex flex-col items-center gap-[24px]">
                         {generatedSlides.map((slide, idx) => (
                           <div key={idx} className="relative group w-full flex justify-center">
