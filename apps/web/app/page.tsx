@@ -459,7 +459,9 @@ export default function Home() {
               {lightboxImage ? (
                 <img src={lightboxImage} alt="Slide Preview" className="max-w-full max-h-[90vh] bg-white border border-[var(--color-brand-border)]" />
               ) : lightboxSlide !== null && generatedSlides[lightboxSlide] ? (
-                renderCSSSlide(generatedSlides[lightboxSlide], lightboxSlide, window.innerWidth > 1024 ? 1 : 0.6)
+                <div style={{ transform: 'scale(min(1, calc((100vw - 48px) / 960)))', transformOrigin: 'center' }}>
+                  {renderCSSSlide(generatedSlides[lightboxSlide], lightboxSlide, 1, false)}
+                </div>
               ) : null}
             </motion.div>
           </motion.div>
@@ -689,11 +691,11 @@ export default function Home() {
                 
                 {previewImages.length === 0 && generatedSlides.length > 0 && (
                   <div className="w-full mb-[32px]">
-                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews (CSS Render)</p>
-                    <div className="flex overflow-x-auto gap-[16px] pb-[16px] preview-strip">
+                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
+                    <div className="flex flex-col items-center gap-[24px] pb-[16px] preview-strip">
                       {generatedSlides.map((slide, idx) => (
-                        <div key={idx} className="flex-shrink-0 relative group">
-                          {renderCSSSlide(slide, idx, 0.25, true)}
+                        <div key={idx} className="relative group w-full flex justify-center">
+                          {renderCSSSlide(slide, idx, 0.35, true)}
                         </div>
                       ))}
                     </div>
