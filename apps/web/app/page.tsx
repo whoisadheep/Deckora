@@ -240,6 +240,34 @@ export default function Home() {
             }
           }
         }
+        
+        // Parse any remaining data in the buffer after the stream closes
+        if (buffer.trim()) {
+          try {
+            const data = JSON.parse(buffer);
+            if (data.status === 'complete' && data.pptxBase64) {
+              setLoadingStep(4);
+              if (data.previewImages && data.previewImages.length > 0) setPreviewImages(data.previewImages);
+              const dUrl = data.downloadUrl ? `${baseUrl}${data.downloadUrl}` : null;
+              const filename = `${topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pptx`;
+              if (dUrl) {
+                setDownloadUrl({ url: dUrl, filename });
+                saveToHistory({ id: Date.now().toString(), topic, timestamp: Date.now(), model, theme, downloadUrl: dUrl });
+              } else {
+                const byteCharacters = atob(data.pptxBase64);
+                const byteNumbers = new Array(byteCharacters.length);
+                for (let i = 0; i < byteCharacters.length; i++) byteNumbers[i] = byteCharacters.charCodeAt(i);
+                const byteArray = new Uint8Array(byteNumbers);
+                const blob = new Blob([byteArray], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' });
+                const url = window.URL.createObjectURL(blob);
+                setDownloadUrl({ url, filename });
+              }
+            }
+          } catch (e) {
+            // Ignore parse errors on remaining fragment
+          }
+        }
+        
       }
     } catch (err: any) {
       if (err.name === 'AbortError') {
