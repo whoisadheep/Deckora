@@ -35,22 +35,30 @@ const C = {
   accentGold:  'B8915A',
 };
 
-function getSectionAccentColor(section?: string): string {
-  if (!section) return C.rustOrange;
-  const accents = [C.rustOrange, C.accentGold, C.lightOrange];
+export type ThemePalette = typeof C;
+
+export const THEMES: Record<string, ThemePalette> = {
+  default: C,
+  ocean: { darkBrown: '1B2A47', warmBrown: '2B4365', rustOrange: '4B89D4', lightOrange: '7AB0E6', cream: 'F0F4F8', cardBg: 'E1E8F0', cardBorder: 'C2D1E0', cardDarkBg: '2B4365', textDark: '1A2639', textMuted: '64748B', textLight: 'E2E8F0', white: 'FFFFFF', accentGold: '38BDF8' },
+  forest: { darkBrown: '2D3A2C', warmBrown: '4A5D48', rustOrange: '6A8D68', lightOrange: '8AB088', cream: 'F2F5F1', cardBg: 'E5EBE3', cardBorder: 'C8D6C6', cardDarkBg: '4A5D48', textDark: '1F291E', textMuted: '6B7B69', textLight: 'E3EBE2', white: 'FFFFFF', accentGold: 'D4AF37' }
+};
+
+function getSectionAccentColor(section: string | undefined, palette: ThemePalette): string {
+  if (!section) return palette.rustOrange;
+  const accents = [palette.rustOrange, palette.accentGold, palette.lightOrange];
   let hash = 0;
   for (let i = 0; i < section.length; i++) {
     hash = section.charCodeAt(i) + ((hash << 5) - hash);
   }
-  return accents[Math.abs(hash) % accents.length] || C.rustOrange;
+  return accents[Math.abs(hash) % accents.length] || palette.rustOrange;
 }
 
 // ── Contextual Footer ────────────────────────────────────────────────
-function addFooter(slide: PptxGenJS.Slide, text?: string, dark = false) {
+function addFooter(slide: PptxGenJS.Slide, text: string | undefined, dark: boolean, palette: ThemePalette) {
   if (text) {
     slide.addText(text, {
       x: 0.8, y: 7.0, w: 10, h: 0.3,
-      fontSize: 10, color: dark ? C.textMuted : C.cardBorder,
+      fontSize: 10, color: dark ? palette.textMuted : palette.cardBorder,
       fontFace: 'Georgia', italic: true,
       valign: 'bottom',
     });
@@ -128,8 +136,11 @@ async function renderMermaidToPng(mermaidCode: string): Promise<string> {
 export async function generatePptx(
   slides: SlideData[], 
   uploadedImages: any[] = [],
-  onProgress?: (step: number, message: string) => void
+  onProgress?: (step: number, message: string, currentSlide?: number, totalSlides?: number) => void,
+  options?: { theme?: string }
 ): Promise<Buffer> {
+  const themeName = options?.theme || 'default';
+  const palette = THEMES[themeName] || THEMES.default;
   onProgress?.(2, 'Generating layouts...');
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inches
@@ -144,28 +155,29 @@ export async function generatePptx(
 
     try {
       console.log(`  Rendering slide ${idx + 1}/${slides.length}: ${data.layout} - "${data.title?.substring(0, 40)}"`);
+      onProgress?.(3, `Rendering slide ${idx + 1} of ${slides.length}`, idx + 1, slides.length);
       if (data.layout === 'hero') {
-        await renderHeroSlide(slide, pptx, data, uploadedImages);
+        await renderHeroSlide(slide, pptx, data, uploadedImages, palette);
       } else if (data.layout === 'cards_light') {
-        await renderCardSlide(slide, pptx, data, false);
+        await renderCardSlide(slide, pptx, data, false, palette);
       } else if (data.layout === 'cards_dark') {
-        await renderCardSlide(slide, pptx, data, true);
+        await renderCardSlide(slide, pptx, data, true, palette);
       } else if (data.layout === 'rows') {
-        await renderRowsSlide(slide, pptx, data);
+        await renderRowsSlide(slide, pptx, data, palette);
       } else if (data.layout === 'split_graphic') {
-        await renderSplitGraphicSlide(slide, pptx, data, uploadedImages);
+        await renderSplitGraphicSlide(slide, pptx, data, uploadedImages, palette);
       } else if (data.layout === 'diagram') {
-        await renderDiagramSlide(slide, pptx, data, uploadedImages);
+        await renderDiagramSlide(slide, pptx, data, uploadedImages, palette);
       } else {
         // Fallback
-        await renderCardSlide(slide, pptx, data, false);
+        await renderCardSlide(slide, pptx, data, false, palette);
       }
     } catch (slideErr: any) {
       console.error(`  ✗ Error rendering slide ${idx + 1} (${data.layout}): ${slideErr.message}`);
       // Add a fallback error slide so the file still generates
       slide.addText(`Error rendering: ${data.title}`, {
         x: 1, y: 3, w: 11, h: 1.5,
-        fontSize: 24, color: C.rustOrange, fontFace: 'Georgia',
+        fontSize: 24, color: palette.rustOrange, fontFace: 'Georgia',
       });
     }
   }
@@ -174,17 +186,14 @@ export async function generatePptx(
   console.log('  Finalizing PPTX...');
   const buffer = await pptx.write({ outputType: 'nodebuffer' }) as Buffer;
   console.log(`  ✓ PPTX generated (${(buffer.length / 1024).toFixed(0)} KB)`);
-  if (process.env.PPTX_QA === 'true') {
-    runQA(buffer);
-  }
   return buffer;
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 1. HERO SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
-  slide.background = { color: C.darkBrown };
+async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[], palette: ThemePalette) {
+  slide.background = { color: palette.darkBrown };
   
   // Render user image if provided, otherwise default triangle
   let renderedImage = false;
@@ -204,21 +213,21 @@ async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
   if (!renderedImage) {
     slide.addShape(pptx.ShapeType.triangle, {
       x: 8.5, y: 3.8, w: 6, h: 5,
-      fill: { color: C.rustOrange },
+      fill: { color: palette.rustOrange },
     });
   }
 
   if (data.kicker) {
     slide.addText(data.kicker.toUpperCase(), {
       x: 1.0, y: 1.8, w: 9, h: 0.3,
-      fontSize: 12, bold: true, color: C.rustOrange,
+      fontSize: 12, bold: true, color: palette.rustOrange,
       fontFace: 'Arial', charSpacing: 3,
     });
   }
 
   slide.addText(data.title, { // No toUpperCase
     x: 1.0, y: 2.2, w: 9, h: 2.5,
-    fontSize: 48, bold: true, color: C.white,
+    fontSize: 48, bold: true, color: palette.white,
     fontFace: 'Georgia', lineSpacingMultiple: 1.1,
     valign: 'top',
   });
@@ -226,26 +235,26 @@ async function renderHeroSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: 1.0, y: 5.0, w: 8, h: 1.0,
-      fontSize: 20, color: C.textLight,
+      fontSize: 20, color: palette.textLight,
       fontFace: 'Arial', italic: true,
       valign: 'top',
     });
   }
 
-  addFooter(slide, data.footerText, true); // true = dark bg mode for footer (uses textMuted instead of cardBorder)
+  addFooter(slide, data.footerText, true, palette); // true = dark bg mode for footer (uses textMuted instead of cardBorder)
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 2. CARDS SLIDE (Light & Dark mode)
 // ═══════════════════════════════════════════════════════════════════════
-async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, isDark: boolean) {
-  slide.background = { color: isDark ? C.darkBrown : C.cream };
+async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, isDark: boolean, palette: ThemePalette) {
+  slide.background = { color: isDark ? palette.darkBrown : palette.cream };
 
-  const titleColor = isDark ? C.white : C.textDark;
-  const subColor = isDark ? C.textLight : C.textMuted;
-  const cardBgColor = isDark ? C.cardDarkBg : C.cardBg;
-  const cardTitleColor = isDark ? C.white : C.textDark;
-  const cardDescColor = isDark ? C.textLight : C.textMuted;
+  const titleColor = isDark ? palette.white : palette.textDark;
+  const subColor = isDark ? palette.textLight : palette.textMuted;
+  const cardBgColor = isDark ? palette.cardDarkBg : palette.cardBg;
+  const cardTitleColor = isDark ? palette.white : palette.textDark;
+  const cardDescColor = isDark ? palette.textLight : palette.textMuted;
 
   slide.addText(data.title, {
     x: 0.8, y: 0.6, w: 11, h: 0.8,
@@ -325,7 +334,7 @@ async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     const circleY = cardY + 0.4;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: circleX, y: circleY, w: circleSize, h: circleSize,
-      fill: { color: getSectionAccentColor(data.section) },
+      fill: { color: getSectionAccentColor(data.section, palette) },
     });
 
     // Icon Image (white)
@@ -357,24 +366,24 @@ async function renderCardSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     }
   }
 
-  addFooter(slide, data.footerText, isDark);
+  addFooter(slide, data.footerText, isDark, palette);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 3. ROWS SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData) {
-  slide.background = { color: C.white };
+async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, palette: ThemePalette) {
+  slide.background = { color: palette.white };
 
   slide.addText(data.title, {
     x: 0.8, y: 0.6, w: 11, h: 0.8,
-    fontSize: 32, bold: true, color: C.textDark,
+    fontSize: 32, bold: true, color: palette.textDark,
     fontFace: 'Georgia',
   });
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: 0.8, y: 1.4, w: 11, h: 0.5,
-      fontSize: 16, color: C.textMuted,
+      fontSize: 16, color: palette.textMuted,
       fontFace: 'Arial', italic: true,
     });
   }
@@ -409,14 +418,14 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     // Divider line
     slide.addShape(pptx.ShapeType.line, {
       x: 0.8, y: y, w: 11.5, h: 0,
-      line: { color: C.cardBorder, width: 1 },
+      line: { color: palette.cardBorder, width: 1 },
     });
 
     // Icon Circle
     const circleSize = 0.6;
     slide.addShape(pptx.ShapeType.ellipse, {
       x: 0.8, y: y + 0.15, w: circleSize, h: circleSize,
-      fill: { color: getSectionAccentColor(data.section) }, // or alternate colors, e.g. a green if matching Claude but let's stick to rust
+      fill: { color: getSectionAccentColor(data.section, palette) }, // or alternate colors, e.g. a green if matching Claude but let's stick to rust
     });
 
     // Icon
@@ -433,7 +442,7 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     // Row Title
     slide.addText(rowTitle, {
       x: 1.7, y: y + 0.15, w: 3.5, h: circleSize,
-      fontSize: 16, bold: true, color: C.textDark,
+      fontSize: 16, bold: true, color: palette.textDark,
       fontFace: 'Georgia', valign: 'middle',
     });
 
@@ -441,7 +450,7 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
     if (rowDesc) {
       slide.addText(rowDesc, {
         x: 5.5, y: y + 0.15, w: 6.8, h: circleSize,
-        fontSize: 14, color: C.textMuted,
+        fontSize: 14, color: palette.textMuted,
         fontFace: 'Arial', valign: 'middle',
       });
     }
@@ -450,22 +459,22 @@ async function renderRowsSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: Sl
   // Final divider
   slide.addShape(pptx.ShapeType.line, {
     x: 0.8, y: startY + numRows * (rowH + gapY), w: 11.5, h: 0,
-    line: { color: C.cardBorder, width: 1 },
+    line: { color: palette.cardBorder, width: 1 },
   });
 
-  addFooter(slide, data.footerText, false);
+  addFooter(slide, data.footerText, false, palette);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 4. SPLIT GRAPHIC SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
-  slide.background = { color: C.white };
+async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[], palette: ThemePalette) {
+  slide.background = { color: palette.white };
 
   // Left text
   slide.addText(data.title, {
     x: 0.8, y: 1.0, w: 5.5, h: 1.0,
-    fontSize: 32, bold: true, color: C.textDark,
+    fontSize: 32, bold: true, color: palette.textDark,
     fontFace: 'Georgia', valign: 'top',
   });
 
@@ -473,7 +482,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: 0.8, y: 2.0, w: 5.5, h: 0.8,
-      fontSize: 18, color: C.textMuted,
+      fontSize: 18, color: palette.textMuted,
       fontFace: 'Arial', italic: true, valign: 'top',
     });
     textY = 2.8;
@@ -487,8 +496,8 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
       arr.push({
         text: title,
         options: {
-          bullet: { code: '25CF', color: getSectionAccentColor(data.section) } as any,
-          fontSize: 14, bold: true, color: C.textDark, fontFace: 'Arial',
+          bullet: { code: '25CF', color: getSectionAccentColor(data.section, palette) } as any,
+          fontSize: 14, bold: true, color: palette.textDark, fontFace: 'Arial',
           paraSpaceBefore: 10, breakLine: true
         }
       });
@@ -496,7 +505,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
         arr.push({
           text: desc,
           options: {
-            fontSize: 13, color: C.textMuted, fontFace: 'Arial',
+            fontSize: 13, color: palette.textMuted, fontFace: 'Arial',
             paraSpaceBefore: 4, breakLine: true
           }
         });
@@ -516,7 +525,7 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
 
   slide.addShape(pptx.ShapeType.roundRect, {
     x: boxX, y: boxY, w: boxW, h: boxH,
-    fill: { color: C.darkBrown }, rectRadius: 0.05,
+    fill: { color: palette.darkBrown }, rectRadius: 0.05,
   });
 
   try {
@@ -564,20 +573,20 @@ async function renderSplitGraphicSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, 
       slide.addText(data.title, { // No toUpperCase
         x: boxX, y: boxY + (boxH - iconSize) / 2 + iconSize,
         w: boxW, h: 1.0,
-        fontSize: 14, bold: true, color: getSectionAccentColor(data.section),
+        fontSize: 14, bold: true, color: getSectionAccentColor(data.section, palette),
         fontFace: 'Arial', charSpacing: 3, align: 'center',
       });
     }
   } catch { /* ignore */ }
 
-  addFooter(slide, data.footerText, false);
+  addFooter(slide, data.footerText, false, palette);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // 5. DIAGRAM SLIDE
 // ═══════════════════════════════════════════════════════════════════════
-async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[]) {
-  slide.background = { color: C.cream };
+async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data: SlideData, uploadedImages: any[], palette: ThemePalette) {
+  slide.background = { color: palette.cream };
 
   // Diagram on left
   const boxX = 0.8;
@@ -587,8 +596,8 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
 
   slide.addShape(pptx.ShapeType.roundRect, {
     x: boxX, y: boxY, w: boxW, h: boxH,
-    fill: { color: C.cardBg }, rectRadius: 0.05,
-    line: { color: C.cardBorder, width: 1 }
+    fill: { color: palette.cardBg }, rectRadius: 0.05,
+    line: { color: palette.cardBorder, width: 1 }
   });
 
   try {
@@ -611,10 +620,10 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
           isMermaid = true;
         } catch (e) {
           console.warn('Mermaid render failed, falling back to icon', e);
-          imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+          imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section, palette)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
         }
       } else {
-        imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
+        imageData = await renderIconToPng(data.title, { size: 512, color: `#${getSectionAccentColor(data.section, palette)}`, iconHint: data.slideIcon || data.bullets?.[0]?.icon });
       }
     }
 
@@ -640,7 +649,7 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
   const textX = 7.0;
   slide.addText(data.title, {
     x: textX, y: 1.0, w: 5.5, h: 1.0,
-    fontSize: 32, bold: true, color: C.textDark,
+    fontSize: 32, bold: true, color: palette.textDark,
     fontFace: 'Georgia', valign: 'top',
   });
 
@@ -648,7 +657,7 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
   if (data.subtitle) {
     slide.addText(data.subtitle, {
       x: textX, y: 2.0, w: 5.5, h: 0.8,
-      fontSize: 18, color: C.textMuted,
+      fontSize: 18, color: palette.textMuted,
       fontFace: 'Arial', italic: true, valign: 'top',
     });
     textY = 2.8;
@@ -662,7 +671,7 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
       arr.push({
         text: `${index + 1}    ${title}`,
         options: {
-          fontSize: 14, bold: true, color: C.textDark, fontFace: 'Arial',
+          fontSize: 14, bold: true, color: palette.textDark, fontFace: 'Arial',
           paraSpaceBefore: 10, breakLine: true
         }
       });
@@ -670,7 +679,7 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
         arr.push({
           text: desc,
           options: {
-            fontSize: 13, color: C.textDark, fontFace: 'Arial',
+            fontSize: 13, color: palette.textDark, fontFace: 'Arial',
             paraSpaceBefore: 4, breakLine: true
           }
         });
@@ -682,13 +691,15 @@ async function renderDiagramSlide(slide: PptxGenJS.Slide, pptx: PptxGenJS, data:
     });
   }
 
-  addFooter(slide, data.footerText, false);
+  addFooter(slide, data.footerText, false, palette);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
 // QA RENDER STEP (dev-only)
 // ═══════════════════════════════════════════════════════════════════════
-function runQA(buffer: Buffer) {
+import { readFileSync, readdirSync } from 'fs';
+
+export async function runQA(buffer: Buffer): Promise<string[]> {
   try {
     const qaDir = path.resolve(__dirname, '../../.qa-output');
     if (!existsSync(qaDir)) mkdirSync(qaDir, { recursive: true });
@@ -713,13 +724,24 @@ function runQA(buffer: Buffer) {
           stdio: 'pipe',
         });
         console.log(`[QA] JPEGs written to: ${jpegPrefix}-*.jpg`);
-      } catch {
-        console.warn('[QA] pdftoppm not found or failed');
+        
+        const files = readdirSync(qaDir).filter(f => f.startsWith(`qa_${timestamp}-`) && f.endsWith('.jpg')).sort();
+        const base64Images = files.map(file => {
+          const filePath = path.join(qaDir, file);
+          const data = readFileSync(filePath);
+          return `data:image/jpeg;base64,${data.toString('base64')}`;
+        });
+        return base64Images;
+      } catch (e) {
+        console.warn('[QA] pdftoppm not found or failed', e);
+        return [];
       }
-    } catch {
-      console.warn('[QA] LibreOffice (soffice) not found or failed');
+    } catch (e) {
+      console.warn('[QA] LibreOffice (soffice) not found or failed', e);
+      return [];
     }
   } catch (err) {
     console.warn('[QA] QA render step failed:', err);
+    return [];
   }
 }

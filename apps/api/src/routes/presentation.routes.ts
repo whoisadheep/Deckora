@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { createOutline } from '../controllers/presentation.controller';
-import { exportPresentation } from '../controllers/presentation.controller';
+import { exportPresentation, downloadPresentation } from '../controllers/presentation.controller';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -40,5 +40,7 @@ const multiUpload = upload.fields([
 
 router.post('/outline', multiUpload, createOutline);
 router.post('/export', multiUpload, exportPresentation);
+
+router.get('/download/:id', downloadPresentation);
 
 export default router;

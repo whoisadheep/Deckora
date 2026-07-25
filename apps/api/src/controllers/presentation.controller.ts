@@ -1,11 +1,13 @@
+import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import path from 'path';
 import { Request, Response } from 'express';
 import { generatePresentationOutline } from '../services/ai.service';
-import { generatePptx, SlideData } from '../services/pptx.service';
+import { generatePptx, SlideData, runQA } from '../services/pptx.service';
 import { extractText } from '../services/document.service';
 
 export async function createOutline(req: Request, res: Response) {
     try {
-        const { topic, model } = req.body;
+        const { topic, model, theme } = req.body;
 
         if (!topic) {
             res.status(400).json({ error: 'Topic is required' });
@@ -37,7 +39,7 @@ export async function createOutline(req: Request, res: Response) {
 
 export async function exportPresentation(req: Request, res: Response) {
     try {
-        const { topic, model } = req.body;
+        const { topic, model, theme } = req.body;
 
         if (!topic) {
             res.status(400).json({ error: 'Topic is required' });
@@ -47,8 +49,8 @@ export async function exportPresentation(req: Request, res: Response) {
         res.setHeader('Content-Type', 'application/x-ndjson');
         res.setHeader('Transfer-Encoding', 'chunked');
 
-        const onProgress = (step: number, message: string) => {
-            res.write(JSON.stringify({ status: 'progress', step, message }) + '\n');
+        const onProgress = (step: number, message: string, currentSlide?: number, totalSlides?: number) => {
+            res.write(JSON.stringify({ status: 'progress', step, message, currentSlide, totalSlides }) + '\n');
         };
 
         const files = req.files as { [fieldname: string]: Express.Multer.File[] } | undefined;
@@ -69,13 +71,30 @@ export async function exportPresentation(req: Request, res: Response) {
         const outline = await generatePresentationOutline(topic, model, documentContext, imageNames, onProgress);
 
         console.log(`Building PPTX file...`);
-        const pptxBuffer = await generatePptx(outline.slides as SlideData[], imagesFiles, onProgress);
+        const pptxBuffer = await generatePptx(outline.slides as SlideData[], imagesFiles, onProgress, { theme });
 
+        
+        console.log(`Generating previews...`);
+        onProgress(5, "Generating previews...");
+        const previewImages = await runQA(pptxBuffer);
+        
+        // Save to public/exports
+        const exportsDir = path.resolve(__dirname, '../../public/exports');
+        if (!existsSync(exportsDir)) mkdirSync(exportsDir, { recursive: true });
+        const id = Date.now().toString();
+        const savePath = path.join(exportsDir, `${id}.pptx`);
+        writeFileSync(savePath, pptxBuffer);
+        const downloadUrl = `/api/presentations/download/${id}`;
+        
         res.write(JSON.stringify({ 
             status: 'complete', 
-            pptxBase64: pptxBuffer.toString('base64') 
-        }) + '\n');
+            pptxBase64: pptxBuffer.toString('base64'),
+            previewImages,
+            downloadUrl
+        }) + '
+');
         res.end();
+
     } catch (error: any) {
         console.error('Error exporting presentation:', error);
         if (!res.headersSent) {
@@ -92,5 +111,14 @@ export async function exportPresentation(req: Request, res: Response) {
             }) + '\n');
             res.end();
         }
+    }
+}
+export async function downloadPresentation(req: Request, res: Response) {
+    const id = req.params.id;
+    const filepath = path.join(__dirname, '../../public/exports', `${id}.pptx`);
+    if (existsSync(filepath)) {
+        res.download(filepath, `presentation_${id}.pptx`);
+    } else {
+        res.status(404).send('Not found');
     }
 }
