@@ -140,7 +140,7 @@ export async function generatePptx(
   options?: { theme?: string }
 ): Promise<Buffer> {
   const themeName = options?.theme || 'default';
-  const palette = THEMES[themeName] || THEMES.default;
+  const palette: ThemePalette = THEMES[themeName] || C;
   onProgress?.(2, 'Generating layouts...');
   const pptx = new PptxGenJS();
   pptx.layout = 'LAYOUT_WIDE'; // 13.33 × 7.5 inches

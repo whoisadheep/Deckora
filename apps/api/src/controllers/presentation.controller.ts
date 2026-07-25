@@ -91,8 +91,7 @@ export async function exportPresentation(req: Request, res: Response) {
             pptxBase64: pptxBuffer.toString('base64'),
             previewImages,
             downloadUrl
-        }) + '
-');
+        }) + '\\n');
         res.end();
 
     } catch (error: any) {
