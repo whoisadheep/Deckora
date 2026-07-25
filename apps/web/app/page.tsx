@@ -104,6 +104,30 @@ export default function Home() {
   const [previewImages, setPreviewImages] = useState<string[]>([]);
   const [generatedSlides, setGeneratedSlides] = useState<SlideData[]>([]);
   const [lightboxSlide, setLightboxSlide] = useState<number | null>(null);
+
+  const previewWrapperRef = useRef<HTMLDivElement>(null);
+  const previewContentRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!previewWrapperRef.current || !previewContentRef.current) return;
+    
+    const lenis = new Lenis({
+      wrapper: previewWrapperRef.current,
+      content: previewContentRef.current,
+      smoothWheel: true,
+    });
+
+    function raf(time: number) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+    requestAnimationFrame(raf);
+
+    return () => {
+      lenis.destroy();
+    };
+  }, [generatedSlides, previewImages]);
+
   
   // New features state
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -692,12 +716,14 @@ export default function Home() {
                 {previewImages.length === 0 && generatedSlides.length > 0 && (
                   <div className="w-full mb-[32px]">
                     <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
-                    <div className="flex flex-col items-center gap-[24px] pb-[16px] preview-strip">
-                      {generatedSlides.map((slide, idx) => (
-                        <div key={idx} className="relative group w-full flex justify-center">
-                          {renderCSSSlide(slide, idx, 0.35, true)}
-                        </div>
-                      ))}
+                    <div ref={previewWrapperRef} className="flex flex-col items-center pb-[16px] preview-strip max-h-[600px] overflow-y-auto overscroll-contain">
+                      <div ref={previewContentRef} className="w-full flex flex-col items-center gap-[24px]">
+                        {generatedSlides.map((slide, idx) => (
+                          <div key={idx} className="relative group w-full flex justify-center">
+                            {renderCSSSlide(slide, idx, 0.35, true)}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
