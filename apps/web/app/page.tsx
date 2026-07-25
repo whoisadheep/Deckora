@@ -209,7 +209,8 @@ export default function Home() {
 
                 // URL for direct download button
                 const dUrl = data.downloadUrl ? `${baseUrl}${data.downloadUrl}` : null;
-                const filename = `${topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pptx`;
+                const shortTopic = topic.split(' ').slice(0, 4).join('_').substring(0, 30).replace(/[^a-z0-9_]/gi, '').toLowerCase();
+                const filename = `deck_${shortTopic}.pptx`;
                 
                 if (dUrl) {
                   setDownloadUrl({ url: dUrl, filename });
@@ -249,7 +250,8 @@ export default function Home() {
               setLoadingStep(4);
               if (data.previewImages && data.previewImages.length > 0) setPreviewImages(data.previewImages);
               const dUrl = data.downloadUrl ? `${baseUrl}${data.downloadUrl}` : null;
-              const filename = `${topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pptx`;
+              const shortTopic = topic.split(' ').slice(0, 4).join('_').substring(0, 30).replace(/[^a-z0-9_]/gi, '').toLowerCase();
+              const filename = `deck_${shortTopic}.pptx`;
               if (dUrl) {
                 setDownloadUrl({ url: dUrl, filename });
                 saveToHistory({ id: Date.now().toString(), topic, timestamp: Date.now(), model, theme, downloadUrl: dUrl });
@@ -533,6 +535,36 @@ export default function Home() {
                           <img src={src} alt={`Slide ${idx + 1}`} className="h-[120px] object-cover" />
                         </div>
                       ))}
+                    </div>
+                  </div>
+                )}
+                
+                {previewImages.length === 0 && (
+                  <div className="w-full mb-[32px]">
+                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
+                    <div className="flex overflow-x-auto gap-[16px] pb-[16px] preview-strip">
+                      <div className="w-[240px] h-[135px] bg-[var(--color-brand-cream)] border border-[var(--color-brand-border)] flex-shrink-0 flex flex-col p-[16px]">
+                        <div className="w-[40%] h-[12px] bg-[var(--color-brand-orange)] mb-[16px]"></div>
+                        <div className="w-[80%] h-[8px] bg-[var(--color-brand-card)] mb-[8px]"></div>
+                        <div className="w-[70%] h-[8px] bg-[var(--color-brand-card)] mb-[8px]"></div>
+                        <div className="w-[85%] h-[8px] bg-[var(--color-brand-card)] mb-[24px]"></div>
+                        <div className="flex-1 border border-[var(--color-brand-border)] bg-white mt-auto flex items-center justify-center">
+                          <span className="text-[10px] text-[var(--color-brand-warm)] uppercase tracking-widest font-bold">Generated PPTX</span>
+                        </div>
+                      </div>
+                      <div className="w-[240px] h-[135px] bg-white border border-[var(--color-brand-border)] flex-shrink-0 flex flex-col p-[16px]">
+                        <div className="w-[60%] h-[12px] bg-[var(--color-brand-dark)] mb-[24px]"></div>
+                        <div className="flex gap-[16px] h-full">
+                          <div className="flex-1 bg-[var(--color-brand-cream)] border border-[var(--color-brand-border)] flex items-center justify-center">
+                            <svg className="w-[24px] h-[24px] text-[var(--color-brand-warm)] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                          </div>
+                          <div className="flex-1 flex flex-col gap-[8px]">
+                            <div className="w-full h-[6px] bg-[var(--color-brand-card)]"></div>
+                            <div className="w-[80%] h-[6px] bg-[var(--color-brand-card)]"></div>
+                            <div className="w-full h-[6px] bg-[var(--color-brand-card)]"></div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 )}
