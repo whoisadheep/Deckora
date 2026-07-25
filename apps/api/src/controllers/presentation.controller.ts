@@ -90,6 +90,7 @@ export async function exportPresentation(req: Request, res: Response) {
             status: 'complete', 
             pptxBase64: pptxBuffer.toString('base64'),
             previewImages,
+            slides: outline.slides,
             downloadUrl
         }) + '\n');
         res.end();

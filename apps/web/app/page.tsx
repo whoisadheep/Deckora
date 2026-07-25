@@ -40,6 +40,55 @@ interface HistoryItem {
   downloadUrl: string;
 }
 
+
+export interface SlideData {
+  section?: string;
+  layout: string;
+  kicker?: string;
+  title: string;
+  subtitle?: string;
+  footerText?: string;
+  bullets?: any[];
+  slideIcon?: string;
+  userImage?: string;
+  mermaid?: string;
+  speakerNotes?: string;
+}
+
+const C = {
+  darkBrown:   '#3D322A',
+  warmBrown:   '#5C4A3A',
+  rustOrange:  '#C05A35',
+  lightOrange: '#D4784B',
+  cream:       '#F5F0EB',
+  cardBg:      '#EDE5DC',
+  cardBorder:  '#D8CFC5',
+  cardDarkBg:  '#4A3C32',
+  textDark:    '#2D241E',
+  textMuted:   '#7A6E63',
+  textLight:   '#E0D6CC',
+  white:       '#FFFFFF',
+  accentGold:  '#B8915A',
+};
+
+type ThemePalette = typeof C;
+
+const THEMES: Record<string, ThemePalette> = {
+  default: C,
+  ocean: { darkBrown: '#1B2A47', warmBrown: '#2B4365', rustOrange: '#4B89D4', lightOrange: '#7AB0E6', cream: '#F0F4F8', cardBg: '#E1E8F0', cardBorder: '#C2D1E0', cardDarkBg: '#2B4365', textDark: '#1A2639', textMuted: '#64748B', textLight: '#E2E8F0', white: '#FFFFFF', accentGold: '#38BDF8' },
+  forest: { darkBrown: '#2D3A2C', warmBrown: '#4A5D48', rustOrange: '#6A8D68', lightOrange: '#8AB088', cream: '#F2F5F1', cardBg: '#E5EBE3', cardBorder: '#C8D6C6', cardDarkBg: '#4A5D48', textDark: '#1F291E', textMuted: '#6B7B69', textLight: '#E3EBE2', white: '#FFFFFF', accentGold: '#D4AF37' }
+};
+
+function getSectionAccentColor(section: string | undefined, palette: ThemePalette): string {
+  if (!section) return palette.rustOrange;
+  const accents = [palette.rustOrange, palette.accentGold, palette.lightOrange];
+  let hash = 0;
+  for (let i = 0; i < section.length; i++) {
+    hash = section.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  return accents[Math.abs(hash) % accents.length] || palette.rustOrange;
+}
+
 export default function Home() {
   const [topic, setTopic] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -53,6 +102,8 @@ export default function Home() {
   const [file, setFile] = useState<File | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [previewImages, setPreviewImages] = useState<string[]>([]);
+  const [generatedSlides, setGeneratedSlides] = useState<SlideData[]>([]);
+  const [lightboxSlide, setLightboxSlide] = useState<number | null>(null);
   
   // New features state
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -203,6 +254,7 @@ export default function Home() {
                 setLoadingStep(4);
                 
                 // Set previews
+                if (data.slides) setGeneratedSlides(data.slides);
                 if (data.previewImages && data.previewImages.length > 0) {
                   setPreviewImages(data.previewImages);
                 }
@@ -248,6 +300,7 @@ export default function Home() {
             const data = JSON.parse(buffer);
             if (data.status === 'complete' && data.pptxBase64) {
               setLoadingStep(4);
+              if (data.slides) setGeneratedSlides(data.slides);
               if (data.previewImages && data.previewImages.length > 0) setPreviewImages(data.previewImages);
               const dUrl = data.downloadUrl ? `${baseUrl}${data.downloadUrl}` : null;
               const shortTopic = topic.split(' ').slice(0, 4).join('_').substring(0, 30).replace(/[^a-z0-9_]/gi, '').toLowerCase();
@@ -291,6 +344,96 @@ export default function Home() {
     }
   };
 
+  
+  const renderCSSSlide = (slide: SlideData, index: number, scale: number = 1, interactive: boolean = false) => {
+    const palette: ThemePalette = THEMES[theme] || C;
+    const isDark = slide.layout === 'cards_dark' || slide.layout === 'split_graphic';
+    const bg = isDark ? palette.darkBrown : palette.cream;
+    const textMain = isDark ? palette.white : palette.textDark;
+    const textSub = isDark ? palette.textLight : palette.textMuted;
+    const cardBg = isDark ? palette.cardDarkBg : palette.white;
+    const cardBorder = isDark ? palette.cardDarkBg : palette.cardBorder;
+    const accent = getSectionAccentColor(slide.section, palette);
+
+    return (
+      <div 
+        key={index}
+        onClick={() => interactive && setLightboxSlide(index)}
+        className={`relative flex-shrink-0 flex flex-col overflow-hidden ${interactive ? 'cursor-pointer hover:ring-2 hover:ring-[var(--color-brand-orange)] transition-all' : ''}`}
+        style={{ 
+          width: 960 * scale, 
+          height: 540 * scale, 
+          backgroundColor: bg,
+          border: `1px solid ${palette.cardBorder}`,
+          transformOrigin: 'top left'
+        }}
+      >
+        {/* Header */}
+        <div style={{ padding: `${32 * scale}px ${48 * scale}px`, display: 'flex', flexDirection: 'column' }}>
+          {slide.kicker && <div style={{ color: accent, fontSize: 14 * scale, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 * scale }}>{slide.kicker}</div>}
+          <div style={{ color: textMain, fontSize: 36 * scale, fontWeight: 'bold', fontFamily: 'Georgia, serif', lineHeight: 1.2 }}>{slide.title}</div>
+          {slide.subtitle && <div style={{ color: textSub, fontSize: 18 * scale, marginTop: 8 * scale, lineHeight: 1.4 }}>{slide.subtitle}</div>}
+        </div>
+
+        {/* Body based on layout */}
+        <div style={{ flex: 1, padding: `0 ${48 * scale}px ${32 * scale}px`, display: 'flex', flexDirection: slide.layout === 'rows' ? 'column' : 'row', gap: 24 * scale, overflow: 'hidden' }}>
+          {slide.layout === 'hero' && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: '60%', height: '4px', backgroundColor: accent }}></div>
+            </div>
+          )}
+          
+          {(slide.layout === 'cards_light' || slide.layout === 'cards_dark') && slide.bullets && (
+            slide.bullets.map((b, i) => (
+              <div key={i} style={{ flex: 1, backgroundColor: cardBg, border: `1px solid ${cardBorder}`, padding: 24 * scale, display: 'flex', flexDirection: 'column' }}>
+                <div style={{ width: 32 * scale, height: 32 * scale, borderRadius: '50%', backgroundColor: accent, marginBottom: 16 * scale }}></div>
+                <div style={{ color: textMain, fontSize: 18 * scale, fontWeight: 'bold', marginBottom: 8 * scale }}>{typeof b === 'string' ? b.split(':')[0] : b.title}</div>
+                <div style={{ color: textSub, fontSize: 14 * scale, lineHeight: 1.5 }}>{typeof b === 'string' ? b.split(':').slice(1).join(':') : b.text}</div>
+              </div>
+            ))
+          )}
+
+          {slide.layout === 'rows' && slide.bullets && (
+            slide.bullets.map((b, i) => (
+              <div key={i} style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}`, padding: `${16 * scale}px ${24 * scale}px`, display: 'flex', alignItems: 'center', gap: 16 * scale }}>
+                <div style={{ width: 12 * scale, height: 12 * scale, backgroundColor: accent }}></div>
+                <div style={{ flex: 1, color: textMain, fontSize: 16 * scale, fontWeight: 'bold' }}>{typeof b === 'string' ? b : b.title}</div>
+              </div>
+            ))
+          )}
+
+          {slide.layout === 'diagram' && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 200 * scale, height: 200 * scale, borderRadius: '50%', border: `4px dashed ${accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: textMain, fontSize: 24 * scale, fontWeight: 'bold' }}>Core</div>
+            </div>
+          )}
+
+          {slide.layout === 'split_graphic' && (
+            <>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 * scale, justifyContent: 'center' }}>
+                {slide.bullets?.map((b, i) => (
+                  <div key={i} style={{ color: textMain, fontSize: 16 * scale, display: 'flex', alignItems: 'flex-start', gap: 8 * scale }}>
+                    <span style={{ color: accent }}>•</span>
+                    <span>{typeof b === 'string' ? b : b.text}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ flex: 1, backgroundColor: cardBg, border: `1px solid ${cardBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <svg style={{ width: 48 * scale, height: 48 * scale, color: textSub, opacity: 0.5 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: `0 ${48 * scale}px ${24 * scale}px`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+           <div style={{ color: textSub, fontSize: 12 * scale }}>{slide.footerText}</div>
+           <div style={{ color: textSub, fontSize: 12 * scale }}>{index + 1}</div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-[var(--color-brand-cream)] text-[var(--color-brand-dark)] font-[system-ui,-apple-system,sans-serif] flex flex-col relative">
       <style>{`
@@ -302,18 +445,23 @@ export default function Home() {
       
       {/* Lightbox */}
       <AnimatePresence>
-        {lightboxImage && (
+        {(lightboxImage || lightboxSlide !== null) && (
           <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-[24px] cursor-pointer"
-            onClick={() => setLightboxImage(null)}
+            onClick={() => { setLightboxImage(null); setLightboxSlide(null); }}
           >
-            <motion.img 
+            <motion.div 
               initial={{ scale: 0.95 }} animate={{ scale: 1 }} exit={{ scale: 0.95 }}
-              src={lightboxImage} 
-              alt="Slide Preview" 
-              className="max-w-full max-h-full shadow-2xl bg-white border border-[var(--color-brand-border)]" 
-            />
+              onClick={(e) => e.stopPropagation()}
+              className="shadow-2xl flex items-center justify-center"
+            >
+              {lightboxImage ? (
+                <img src={lightboxImage} alt="Slide Preview" className="max-w-full max-h-[90vh] bg-white border border-[var(--color-brand-border)]" />
+              ) : lightboxSlide !== null && generatedSlides[lightboxSlide] ? (
+                renderCSSSlide(generatedSlides[lightboxSlide], lightboxSlide, window.innerWidth > 1024 ? 1 : 0.6)
+              ) : null}
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -539,32 +687,15 @@ export default function Home() {
                   </div>
                 )}
                 
-                {previewImages.length === 0 && (
+                {previewImages.length === 0 && generatedSlides.length > 0 && (
                   <div className="w-full mb-[32px]">
-                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
+                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews (CSS Render)</p>
                     <div className="flex overflow-x-auto gap-[16px] pb-[16px] preview-strip">
-                      <div className="w-[240px] h-[135px] bg-[var(--color-brand-cream)] border border-[var(--color-brand-border)] flex-shrink-0 flex flex-col p-[16px]">
-                        <div className="w-[40%] h-[12px] bg-[var(--color-brand-orange)] mb-[16px]"></div>
-                        <div className="w-[80%] h-[8px] bg-[var(--color-brand-card)] mb-[8px]"></div>
-                        <div className="w-[70%] h-[8px] bg-[var(--color-brand-card)] mb-[8px]"></div>
-                        <div className="w-[85%] h-[8px] bg-[var(--color-brand-card)] mb-[24px]"></div>
-                        <div className="flex-1 border border-[var(--color-brand-border)] bg-white mt-auto flex items-center justify-center">
-                          <span className="text-[10px] text-[var(--color-brand-warm)] uppercase tracking-widest font-bold">Generated PPTX</span>
+                      {generatedSlides.map((slide, idx) => (
+                        <div key={idx} className="flex-shrink-0 relative group">
+                          {renderCSSSlide(slide, idx, 0.25, true)}
                         </div>
-                      </div>
-                      <div className="w-[240px] h-[135px] bg-white border border-[var(--color-brand-border)] flex-shrink-0 flex flex-col p-[16px]">
-                        <div className="w-[60%] h-[12px] bg-[var(--color-brand-dark)] mb-[24px]"></div>
-                        <div className="flex gap-[16px] h-full">
-                          <div className="flex-1 bg-[var(--color-brand-cream)] border border-[var(--color-brand-border)] flex items-center justify-center">
-                            <svg className="w-[24px] h-[24px] text-[var(--color-brand-warm)] opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
-                          </div>
-                          <div className="flex-1 flex flex-col gap-[8px]">
-                            <div className="w-full h-[6px] bg-[var(--color-brand-card)]"></div>
-                            <div className="w-[80%] h-[6px] bg-[var(--color-brand-card)]"></div>
-                            <div className="w-full h-[6px] bg-[var(--color-brand-card)]"></div>
-                          </div>
-                        </div>
-                      </div>
+                      ))}
                     </div>
                   </div>
                 )}
