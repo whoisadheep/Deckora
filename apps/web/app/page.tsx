@@ -373,12 +373,26 @@ export default function Home() {
   
   const renderCSSSlide = (slide: SlideData, index: number, scale: number = 1, interactive: boolean = false) => {
     const palette: ThemePalette = THEMES[theme] || C;
-    const isDark = slide.layout === 'cards_dark' || slide.layout === 'split_graphic';
-    const bg = isDark ? palette.darkBrown : palette.cream;
-    const textMain = isDark ? palette.white : palette.textDark;
-    const textSub = isDark ? palette.textLight : palette.textMuted;
-    const cardBg = isDark ? palette.cardDarkBg : palette.white;
-    const cardBorder = isDark ? palette.cardDarkBg : palette.cardBorder;
+    
+    // Determine specific layout attributes to match pptx.service.ts
+    const isHero = slide.layout === 'hero';
+    const isCardsDark = slide.layout === 'cards_dark';
+    const isSplit = slide.layout === 'split_graphic';
+    const isDiagram = slide.layout === 'diagram';
+    const isRows = slide.layout === 'rows';
+    
+    // Background rules based on pptx.service.ts
+    let bg = palette.cream;
+    if (isHero || isCardsDark) bg = palette.darkBrown;
+    if (isSplit) bg = palette.white;
+
+    // Text colors
+    const textMain = (isHero || isCardsDark) ? palette.white : palette.textDark;
+    const textSub = (isHero || isCardsDark) ? palette.textLight : palette.textMuted;
+    
+    // Cards rules
+    const cardBg = isCardsDark ? palette.cardDarkBg : palette.white;
+    const cardBorder = isCardsDark ? palette.cardDarkBg : palette.cardBorder;
     const accent = getSectionAccentColor(slide.section, palette);
 
     return (
@@ -397,15 +411,26 @@ export default function Home() {
         {/* Header */}
         <div style={{ padding: `${32 * scale}px ${48 * scale}px`, display: 'flex', flexDirection: 'column' }}>
           {slide.kicker && <div style={{ color: accent, fontSize: 14 * scale, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 8 * scale }}>{slide.kicker}</div>}
-          <div style={{ color: textMain, fontSize: 36 * scale, fontWeight: 'bold', fontFamily: 'Georgia, serif', lineHeight: 1.2 }}>{slide.title}</div>
-          {slide.subtitle && <div style={{ color: textSub, fontSize: 18 * scale, marginTop: 8 * scale, lineHeight: 1.4 }}>{slide.subtitle}</div>}
+          <div style={{ color: textMain, fontSize: (isHero ? 48 : 36) * scale, fontWeight: 'bold', fontFamily: 'Georgia, serif', lineHeight: 1.2 }}>{slide.title}</div>
+          {slide.subtitle && <div style={{ color: textSub, fontSize: (isHero ? 20 : 18) * scale, marginTop: 8 * scale, lineHeight: 1.4 }}>{slide.subtitle}</div>}
         </div>
 
         {/* Body based on layout */}
-        <div style={{ flex: 1, padding: `0 ${48 * scale}px ${32 * scale}px`, display: 'flex', flexDirection: slide.layout === 'rows' ? 'column' : 'row', gap: 24 * scale, overflow: 'hidden' }}>
-          {slide.layout === 'hero' && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: '60%', height: '4px', backgroundColor: accent }}></div>
+        <div style={{ flex: 1, padding: `0 ${48 * scale}px ${32 * scale}px`, display: 'flex', flexDirection: isRows ? 'column' : 'row', gap: 24 * scale, overflow: 'hidden', position: 'relative' }}>
+          
+          {isHero && (
+            <div style={{ position: 'absolute', right: 48 * scale, bottom: 32 * scale, width: 400 * scale, height: 350 * scale, display: 'flex', alignItems: 'flex-end', justifyContent: 'flex-end' }}>
+               {slide.userImage ? (
+                  <div style={{ width: '100%', height: '100%', backgroundColor: accent, opacity: 0.8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: palette.white, fontSize: 16 * scale }}>Image: {slide.userImage}</div>
+               ) : (
+                 <div style={{
+                    width: 0,
+                    height: 0,
+                    borderLeft: `${200 * scale}px solid transparent`,
+                    borderRight: `${200 * scale}px solid transparent`,
+                    borderBottom: `${350 * scale}px solid ${palette.rustOrange}`,
+                  }}></div>
+               )}
             </div>
           )}
           
@@ -419,42 +444,54 @@ export default function Home() {
             ))
           )}
 
-          {slide.layout === 'rows' && slide.bullets && (
-            slide.bullets.map((b, i) => (
-              <div key={i} style={{ backgroundColor: cardBg, border: `1px solid ${cardBorder}`, padding: `${16 * scale}px ${24 * scale}px`, display: 'flex', alignItems: 'center', gap: 16 * scale }}>
-                <div style={{ width: 12 * scale, height: 12 * scale, backgroundColor: accent }}></div>
-                <div style={{ flex: 1, color: textMain, fontSize: 16 * scale, fontWeight: 'bold' }}>{typeof b === 'string' ? b : b.title}</div>
-              </div>
-            ))
-          )}
-
-          {slide.layout === 'diagram' && (
-            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ width: 200 * scale, height: 200 * scale, borderRadius: '50%', border: `4px dashed ${accent}`, display: 'flex', alignItems: 'center', justifyContent: 'center', color: textMain, fontSize: 24 * scale, fontWeight: 'bold' }}>Core</div>
+          {isRows && slide.bullets && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 * scale, width: '100%' }}>
+              {slide.bullets.map((b, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 16 * scale, borderBottom: `1px solid ${palette.cardBorder}`, paddingBottom: 12 * scale }}>
+                  <div style={{ width: 40 * scale, height: 40 * scale, borderRadius: '50%', backgroundColor: accent, flexShrink: 0 }}></div>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    <div style={{ color: textMain, fontSize: 16 * scale, fontWeight: 'bold', fontFamily: 'Georgia, serif' }}>{typeof b === 'string' ? b : b.title}</div>
+                    {typeof b !== 'string' && b.description && <div style={{ color: textSub, fontSize: 14 * scale }}>{b.description}</div>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
 
-          {slide.layout === 'split_graphic' && (
+          {isDiagram && (
+            <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <div style={{ width: 400 * scale, height: 350 * scale, borderRadius: 8 * scale, backgroundColor: palette.cardBg, border: `1px solid ${palette.cardBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <div style={{ width: 120 * scale, height: 120 * scale, borderRadius: '50%', backgroundColor: palette.darkBrown, display: 'flex', alignItems: 'center', justifyContent: 'center', color: accent, fontSize: 14 * scale, fontWeight: 'bold', textAlign: 'center' }}>{slide.title}</div>
+              </div>
+            </div>
+          )}
+
+          {isSplit && (
             <>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 * scale, justifyContent: 'center' }}>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16 * scale, justifyContent: 'flex-start' }}>
                 {slide.bullets?.map((b, i) => (
-                  <div key={i} style={{ color: textMain, fontSize: 16 * scale, display: 'flex', alignItems: 'flex-start', gap: 8 * scale }}>
-                    <span style={{ color: accent }}>•</span>
-                    <span>{typeof b === 'string' ? b : b.text}</span>
+                  <div key={i} style={{ display: 'flex', flexDirection: 'column', marginBottom: 16 * scale }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 * scale }}>
+                      <span style={{ color: accent, fontSize: 20 * scale }}>●</span>
+                      <span style={{ color: textMain, fontSize: 16 * scale, fontWeight: 'bold' }}>{typeof b === 'string' ? b : b.title}</span>
+                    </div>
+                    {typeof b !== 'string' && b.description && (
+                      <span style={{ color: textSub, fontSize: 14 * scale, marginTop: 4 * scale, paddingLeft: 20 * scale }}>{b.description}</span>
+                    )}
                   </div>
                 ))}
               </div>
-              <div style={{ flex: 1, backgroundColor: cardBg, border: `1px solid ${cardBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <svg style={{ width: 48 * scale, height: 48 * scale, color: textSub, opacity: 0.5 }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+              <div style={{ flex: 1, backgroundColor: palette.darkBrown, borderRadius: 8 * scale, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                 <svg style={{ width: 64 * scale, height: 64 * scale, color: accent }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
               </div>
             </>
           )}
         </div>
 
         {/* Footer */}
-        <div style={{ padding: `0 ${48 * scale}px ${24 * scale}px`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-           <div style={{ color: textSub, fontSize: 12 * scale }}>{slide.footerText}</div>
-           <div style={{ color: textSub, fontSize: 12 * scale }}>{index + 1}</div>
+        <div style={{ padding: `0 ${48 * scale}px ${24 * scale}px`, display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'absolute', bottom: 0, width: '100%' }}>
+           <div style={{ color: (isHero || isCardsDark) ? palette.textMuted : palette.cardBorder, fontSize: 12 * scale, fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{slide.footerText}</div>
+           <div style={{ color: (isHero || isCardsDark) ? palette.textMuted : palette.cardBorder, fontSize: 12 * scale, fontStyle: 'italic', fontFamily: 'Georgia, serif' }}>{index + 1}</div>
         </div>
       </div>
     );
@@ -613,8 +650,8 @@ export default function Home() {
                 </div>
               )}
               
-              <div className="flex justify-between items-center px-[24px] py-[16px] border-t border-[var(--color-brand-border)] bg-[var(--color-brand-cream)]">
-                <div className="flex items-center gap-[16px]">
+              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-[24px] py-[16px] border-t border-[var(--color-brand-border)] bg-[var(--color-brand-cream)] gap-[16px]">
+                <div className="flex items-center gap-[16px] w-full sm:w-auto">
                   <label aria-label="Attach document" title="Add Document" className="text-[var(--color-brand-dark)] hover:text-[var(--color-brand-orange)] transition-colors cursor-pointer flex items-center justify-center">
                     <PlusIcon />
                     <input type="file" accept=".pdf,.docx,.txt,.md" className="hidden" onChange={(e) => { const selected = e.target.files?.[0] || null; setFile(selected); e.target.value = ''; }} />
@@ -624,13 +661,13 @@ export default function Home() {
                     <input type="file" accept="image/jpeg,image/png,image/webp,image/gif" multiple className="hidden" onChange={(e) => { const selected = Array.from(e.target.files || []); if (images.length + selected.length > 8) { alert("Max 8 images."); return; } setImages(prev => [...prev, ...selected]); e.target.value = ''; }} />
                   </label>
                   {!isGenerating && (
-                    <button type="button" onClick={handleMicClick} aria-label="Voice input" className="text-[var(--color-brand-dark)] hover:text-[var(--color-brand-orange)] transition-colors hidden sm:block cursor-pointer">
+                    <button type="button" onClick={handleMicClick} aria-label="Voice input" className="text-[var(--color-brand-dark)] hover:text-[var(--color-brand-orange)] transition-colors cursor-pointer">
                       <MicIcon isListening={isListening} />
                     </button>
                   )}
                 </div>
                 
-                <div className="flex items-center gap-[16px]">
+                <div className="flex flex-wrap items-center gap-[12px] sm:gap-[16px] w-full sm:w-auto justify-end">
                   {/* Theme Picker */}
                   <div className="flex items-center gap-[8px]">
                     <button type="button" aria-label="Default Theme" onClick={() => setTheme('default')} className={`w-[16px] h-[16px] rounded-full bg-[#C05A35] ${theme === 'default' ? 'ring-2 ring-offset-2 ring-[var(--color-brand-dark)]' : ''}`} />
@@ -658,7 +695,7 @@ export default function Home() {
                     <button 
                       type="button"
                       onClick={handleCancel}
-                      className="px-[16px] py-[8px] text-[14px] font-bold border border-[var(--color-brand-border)] bg-white text-[var(--color-brand-dark)] hover:bg-[var(--color-brand-cream)] transition-colors"
+                      className="px-[16px] py-[8px] text-[14px] font-bold border border-[var(--color-brand-border)] bg-white text-[var(--color-brand-dark)] hover:bg-[var(--color-brand-cream)] transition-colors w-full sm:w-auto mt-[8px] sm:mt-0"
                     >
                       Cancel
                     </button>
@@ -667,7 +704,7 @@ export default function Home() {
                       type="submit"
                       aria-label="Generate presentation"
                       disabled={!topic.trim()}
-                      className={`px-[24px] py-[8px] text-[14px] font-bold transition-colors ${
+                      className={`px-[24px] py-[8px] text-[14px] font-bold transition-colors w-full sm:w-auto mt-[8px] sm:mt-0 ${
                         !topic.trim() 
                           ? 'bg-[var(--color-brand-border)] text-[var(--color-brand-cream)] cursor-not-allowed' 
                           : 'bg-[var(--color-brand-dark)] text-white hover:bg-[var(--color-brand-orange)]'
