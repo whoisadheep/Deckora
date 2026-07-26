@@ -754,16 +754,52 @@ export default function Home() {
                 
                 {previewImages.length === 0 && generatedSlides.length > 0 && (
                   <div className="w-full mb-[32px]">
-                    <p className="text-[14px] font-bold mb-[16px] text-left">Slide Previews</p>
-                    <div ref={previewWrapperRef} className="flex flex-col items-center pb-[16px] preview-strip max-h-[600px] overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-                      <div ref={previewContentRef} className="w-full flex flex-col items-center gap-[24px]">
-                        {generatedSlides.map((slide, idx) => (
-                          <div key={idx} className="relative group w-full flex justify-center">
-                            {renderCSSSlide(slide, idx, 0.35, true)}
+                    <p className="text-[14px] font-bold mb-[16px] text-left">Live Preview</p>
+                    
+                    {(() => {
+                      // Determine if we can use Microsoft Office Viewer
+                      let fullUrl = downloadUrl.url;
+                      if (fullUrl.startsWith('/')) {
+                        fullUrl = typeof window !== 'undefined' ? window.location.origin + fullUrl : fullUrl;
+                      }
+                      
+                      const isPublic = fullUrl.startsWith('http') && 
+                                       !fullUrl.includes('localhost') && 
+                                       !fullUrl.includes('127.0.0.1') && 
+                                       !fullUrl.startsWith('blob:');
+
+                      if (isPublic) {
+                        return (
+                          <div className="w-full border border-[var(--color-brand-border)] bg-[var(--color-brand-cream)] relative" style={{ height: '500px' }}>
+                            <iframe 
+                              src={`https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(fullUrl)}`}
+                              width="100%" 
+                              height="100%" 
+                              frameBorder="0"
+                              title="PowerPoint Preview"
+                              className="absolute inset-0 w-full h-full"
+                            >
+                            </iframe>
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        );
+                      }
+
+                      // Fallback to CSS for localhost
+                      return (
+                        <div ref={previewWrapperRef} className="flex flex-col items-center pb-[16px] preview-strip max-h-[600px] overflow-y-auto overscroll-contain [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                          <div className="w-full text-center py-2 bg-[var(--color-brand-cream)] text-[12px] text-[var(--color-brand-warm)] border border-[var(--color-brand-border)] mb-4">
+                            Showing CSS approximation (Live PPTX preview requires public deployment)
+                          </div>
+                          <div ref={previewContentRef} className="w-full flex flex-col items-center gap-[24px]">
+                            {generatedSlides.map((slide, idx) => (
+                              <div key={idx} className="relative group w-full flex justify-center">
+                                {renderCSSSlide(slide, idx, 0.35, true)}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
 

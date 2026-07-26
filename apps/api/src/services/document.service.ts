@@ -12,8 +12,16 @@ export async function extractText(buffer: Buffer, mimeType: string): Promise<str
   let raw: string;
 
   if (mimeType === 'application/pdf') {
-    const parse = typeof pdfParse === 'function' ? pdfParse : (pdfParse as any).default;
-    const data = await parse(buffer);
+    // Handle CommonJS/ESM interop issues robustly
+    let parse = pdfParse;
+    if (typeof parse !== 'function') {
+      parse = (pdfParse as any).default || (pdfParse as any).pdfParse;
+    }
+    if (typeof parse !== 'function') {
+      throw new Error(`Internal error: pdf-parse module did not export a function. Got: ${typeof parse}`);
+    }
+    
+    const data = await (parse as Function)(buffer);
     raw = data.text;
   } else if (
     mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
